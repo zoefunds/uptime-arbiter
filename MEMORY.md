@@ -213,6 +213,23 @@ into: root `.env`, `backend/.env`, `backend` Fly secrets
 NEXT_PUBLIC_CONTRACT_ADDRESS` + redeploy) — same sequence as the original
 wiring, just pointed at the new address.
 
+## Live bug found & fixed: BigInt JSON serialization
+First real `propose_sla()` (label "GitHub Actions Runner Fleet", `SLA-1`)
+succeeded on-chain and the indexer correctly picked it up — but `/slas`
+then 500'd on every request with `Do not know how to serialize a BigInt`,
+which made the registry page spin forever (no error surfaced client-side
+because the fetch itself succeeded, it just returned a 500 the query kept
+retrying). Cause: `prisma/schema.prisma`'s `BigInt` columns
+(`registrationDeadlineTs`, `termStartTs`, `termEndTs`, `windowStartTs`,
+`windowEndTs`, `challengeDeadlineTs`) come back from Prisma as native JS
+`BigInt`, which `JSON.stringify` throws on unconditionally. Fixed with a
+global `BigInt.prototype.toJSON` returning `this.toString()` at the top of
+`backend/src/server.ts` — serializes as a decimal string, consistent with
+how every wei amount in this API is already represented as a string (never
+a JS number, to avoid precision loss). If this pattern is ever refactored
+away (e.g. moving off Prisma, or switching serializers), re-verify BigInt
+columns don't silently break every route that returns them again.
+
 ## Next phases (not yet built)
 1. End-to-end verification with a real wallet: propose an SLA, fund escrow
    from both sides, submit a claim, trigger evaluation, optionally
