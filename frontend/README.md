@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Uptime Arbiter — Frontend
 
-## Getting Started
+Next.js 16 (App Router, Turbopack), Tailwind v4, wagmi + Reown AppKit for
+wallet connect, genlayer-js for direct browser-to-contract reads/writes.
 
-First, run the development server:
+## Trust boundary
+
+Every write (`propose_sla`, `lock_provider_escrow`, `co_sign_and_lock_bond`,
+`submit_claim`, `evaluate_claim`, `file_challenge`, `resolve_challenge`,
+`finalize_claim`, `withdraw`) is signed by the connected wallet and sent
+directly to the deployed contract via `src/lib/genlayer.ts` — never proxied
+through the backend. The backend (`NEXT_PUBLIC_API_BASE_URL`) is read-only:
+paginated SLA/claim/challenge listings and live withdrawable-balance lookups.
+
+## Local development
 
 ```bash
+npm install
+cp .env.local.example .env.local   # fill in values, or copy from repo root .env
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Requires the backend running locally (see `../backend/README.md`) for the
+registry/claims/vault pages to have data to show; the landing page's live
+stats ribbon degrades gracefully if the backend is unreachable.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deploying to Vercel
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+vercel link
+vercel env add NEXT_PUBLIC_REOWN_PROJECT_ID
+vercel env add NEXT_PUBLIC_CONTRACT_ADDRESS
+vercel env add NEXT_PUBLIC_GENLAYER_CHAIN_ID
+vercel env add NEXT_PUBLIC_GENLAYER_RPC_URL
+vercel env add NEXT_PUBLIC_API_BASE_URL   # the deployed Fly.io backend URL
+vercel deploy --prod
+```
 
-## Learn More
+## Pages
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `/` — landing, protocol pitch, live stats ribbon
+- `/registry`, `/registry/[slaId]` — browse SLAs, fund/co-sign/cancel/submit claims
+- `/register` — 3-step SLA proposal form (`propose_sla`)
+- `/claims`, `/claims/[claimId]` — adjudication room: trigger evaluation,
+  file/resolve challenges, finalize settlement
+- `/vault` — per-wallet withdrawable balance + `withdraw()`

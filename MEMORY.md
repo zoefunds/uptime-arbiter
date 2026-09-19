@@ -112,16 +112,55 @@ errors.
   `prisma migrate deploy` on every deploy. See `backend/README.md` for the
   exact `fly launch`/`fly postgres`/`fly secrets` sequence.
 
+## Frontend — `frontend/` (done)
+Next.js 16 (App Router, Turbopack), Tailwind v4 (CSS-based `@theme`, not a
+`tailwind.config.js` — v4 changed that), wagmi + Reown AppKit for wallet
+connect, genlayer-js 1.2.0 for direct browser-to-contract reads/writes.
+Pages: `/` (landing), `/registry` + `/registry/[slaId]`, `/register`,
+`/claims` + `/claims/[claimId]` (adjudication room), `/vault`. Design tokens
+in `src/app/globals.css` lifted from `DESIGN.md`. Logo/favicon adapted from
+`logo.html`. Verified: clean `tsc`, clean `next build`, all 5 routes return
+200 against the live backend, landing/registry/register pages screenshot-
+verified in-browser showing real state (0 SLAs, correctly empty; register
+page correctly gated behind wallet connect).
+
+- **genlayer-js API surface differs from the hosted docs** for this version
+  (1.2.0): there is no `estimateTransactionFeesForWrite` on the client, and
+  `writeContract` just takes `{ address, functionName, args, value }`
+  directly (no separate `fees` object — that flow is apparently for a
+  fee-charging deployment variant, not StudioNet). `waitForTransactionReceipt`
+  takes a `status` field typed as the real `TransactionStatus` enum from
+  `genlayer-js/types` (e.g. `TransactionStatus.FINALIZED`), not a string
+  literal. If genlayer-js is upgraded later, re-verify this — don't trust
+  the hosted docs' write-flow snippet blindly, verify against
+  `node_modules/genlayer-js/dist/*.d.ts` directly, same as was needed here.
+- **Next.js 16 ships an `AGENTS.md`/`CLAUDE.md`** in the scaffold explicitly
+  warning that APIs differ from training data and pointing at
+  `node_modules/next/dist/docs/` — worth reading before assuming App Router
+  behavior carries over unchanged in a future session.
+- Wallet-signed write flows (`propose_sla`, `lock_provider_escrow`, etc.)
+  are implemented and typecheck/build clean but have NOT been exercised
+  end-to-end with a real signing wallet (no browser extension available in
+  this environment) — that verification is still owed once deployed.
+
+## Repo & git
+Single root git repo at `/Users/macbook/UPTIME-ARBITER` (contract, backend,
+frontend all in one repo, matching the "submit the full repo" review
+requirement) — NOT one repo per subfolder; `frontend/`'s own nested `.git`
+from `create-next-app` was deleted for this reason. Remote:
+`https://github.com/zoefunds/uptime-arbiter.git`. Commit identity is
+repo-local (`git config user.name/email`, not global) — `zoefunds` /
+`preciousmofeoluwa@gmail.com`, no Claude attribution in commit messages.
+Commit and push after each meaningful chunk of work, per standing
+instruction — don't wait to be asked again.
+
 ## Next phases (not yet built)
-1. Frontend (Next.js/Vercel, dark theme per `DESIGN.md` tokens, pages mapped
-   from the five HTML prototypes in `~/Documents/stitch_dark_theme_project_design/`
-   — landing, SLA registry/dashboard, register-SLA flow, adjudication room,
-   vault/settlements — rebuilt against live contract state via `genlayer-js`,
-   not copy-pasted static markup). Reown AppKit for wallet connect
-   (`NEXT_PUBLIC_REOWN_PROJECT_ID` already in `.env`). Favicon/logo adapted
-   from `logo.html`.
-2. Actually deploy the backend to Fly.io (built + verified locally, not yet
-   shipped) and the frontend to Vercel.
+1. Actually deploy the backend to Fly.io (built + verified locally, not yet
+   shipped) and the frontend to Vercel (built + verified locally, not yet
+   shipped).
+2. End-to-end verification with a real wallet: propose an SLA, fund escrow
+   from both sides, submit a claim, trigger evaluation, optionally
+   challenge, finalize, withdraw — the full lifecycle, live on StudioNet.
 
 ## Source material referenced (read, not copied)
 - `~/Downloads/UPTIME-ARBITER.md` — master build prompt / working rules.
