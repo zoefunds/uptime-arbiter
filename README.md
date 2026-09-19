@@ -83,4 +83,10 @@ The backend is a pure read cache. It never makes a breach determination, never p
 
 ## Status
 
-The full lifecycle — propose, fund escrow, co-sign bond, activate, submit a claim, independently evaluate it via GenLayer consensus, file and resolve a challenge, finalize, and withdraw — has been exercised live on StudioNet against a real deployed contract, not just written and unit-tested. See `MEMORY.md` for the verification log, including bugs found during that process and how they were fixed.
+Every mechanism in the lifecycle has been exercised live on StudioNet against a real deployed contract, not just written and unit-tested — though not all of it on the same claim in the same run, since some steps are gated by real wall-clock time (a challenge window) rather than something that can be rushed for a demo:
+
+- **Verified on the current deployment** (`0x8aB7b78e29D9af2b66A7B01E1D41E56Fb6595614`): SLA proposal (with pinned exclusion terms), dual-sided escrow/bond funding, activation, claim submission and pinning, independent multi-validator evaluation (resolved `RESOLVED_NO_BREACH`), a full challenge round (additional sources appended, re-adjudicated, bond correctly slashed to the winning party).
+- **Verified on a prior deployment**, same contract logic: claim finalization and pull-based withdrawal, including correct fund movement to both parties' withdrawable balances.
+- **Verified by the test suite** (`tests/direct/`, 35 passing): every settlement branch (no-breach, partial, capped-at-escrow, inconclusive), both challenge outcomes, finalize idempotency, and — independently of any live run — a direct proof that the Equivalence Principle validator re-derives its answer and rejects disagreement beyond tolerance rather than trusting the leader.
+
+Finalize/withdraw on the current deployment's live claim is correctly blocked until its challenge window closes (it was re-extended by the challenge round, per design) — this is the contract enforcing its own timing rules, not an open bug. See `MEMORY.md` for the full verification log and every real bug found along the way, with root cause and fix.

@@ -29,7 +29,7 @@ python3.12 -m venv .venv-tests
   window validation, the settlement math (no-breach / partial / capped-at-
   escrow), the majority-quorum `INCONCLUSIVE` path when sources are
   unreachable, and — the test backing the GenLayer Fit argument in the
-  contract header — that `exclusion_terms` actually reaches the LLM prompt
+  root `README.md` — that `exclusion_terms` actually reaches the LLM prompt
   (asserted via an LLM mock that only matches if the pinned exclusion text
   was interpolated correctly).
 - **`test_challenges_and_settlement.py`** — challenge access control and

@@ -426,17 +426,34 @@ viewport). Verified visually: title fits on one line, hamburger opens/
 closes correctly, all four links reachable and functional.
 
 Not verified in this pass: real touch-target sizing on an actual device
-(browser emulation approximates but doesn't guarantee), and the claims/
-[claimId] and registry/[slaId] detail pages with real populated data
-(current registry is empty post-database-clear) — worth a follow-up once
-there's a live SLA/claim to render.
+(browser emulation approximates but doesn't guarantee).
 
-## Next phases (not yet built)
-1. End-to-end verification with a real wallet: propose an SLA, fund escrow
-   from both sides, submit a claim, trigger evaluation, optionally
-   challenge, finalize, withdraw — the full lifecycle, live on StudioNet.
-   Not yet done — needs a human with a real wallet extension, not possible
-   from this environment.
+**Follow-up check with real data** (once the lifecycle re-run below
+produced a live `SLA-1`/`CLM-1` to render): the registry detail page was
+clean, but the claim detail page had a real overflow bug — the ISO
+`resolvedAt` timestamp (e.g. `2026-09-19T09:28:43.264044+00:00`) ran past
+its card's right edge in the `grid-cols-2` "Consensus Verdict" section
+instead of wrapping, because the shared `Field` component had no
+`min-w-0`/`break-words` (grid/flex children default to `min-width: auto`,
+which blocks shrinking below content size — a classic CSS gotcha, not
+specific to this stack). Fixed in the `Field` component in both
+`claims/[claimId]/page.tsx` and `registry/[slaId]/page.tsx`, verified
+visually post-fix.
+
+## Next phases
+The full lifecycle (propose → fund → activate → claim → evaluate →
+challenge → resolve) is done and verified live, more than once, on more
+than one deployment generation (see the "Full lifecycle re-run" and the
+three "Live bug found & fixed" sections above). Finalize/withdraw on the
+current deployment's live claim (`CLM-1` on `0x8aB7b78e2...`) is pending
+only because its challenge window hasn't closed yet (~2026-09-22,
+correctly re-extended by the challenge round) — not because of any open
+question about whether that code path works; it's already proven both
+live (prior deployment) and by 4 direct-mode tests. Nothing is blocked on
+further build work at this point — remaining items are judgment calls for
+submission (e.g. whether to wait out the challenge window for one more
+live finalize/withdraw before presenting, or rely on the existing proof
+points), not missing functionality.
 
 ## Source material referenced (read, not copied)
 - `~/Downloads/UPTIME-ARBITER.md` — master build prompt / working rules.

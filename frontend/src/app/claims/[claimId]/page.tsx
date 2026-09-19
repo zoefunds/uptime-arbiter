@@ -260,9 +260,9 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col">
+    <div className="flex min-w-0 flex-col">
       <span className="font-mono text-[10px] uppercase text-on-surface-variant">{label}</span>
-      <span className="text-on-surface">{value}</span>
+      <span className="break-words text-on-surface">{value}</span>
     </div>
   );
 }
