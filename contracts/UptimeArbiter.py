@@ -275,11 +275,20 @@ def _fingerprint(items: list) -> str:
     return format(h, "016x")
 
 
-def _str_list_to_dynarray(items: list) -> DynArray[str]:
-    arr = DynArray[str]()
-    for item in items:
-        arr.append(item)
-    return arr
+def _str_list_to_dynarray(items: list) -> list:
+    """
+    DynArray is a storage-only type — GenVM raises
+    `TypeError: this class can't be instantiated by user` if user code ever
+    calls `DynArray[str]()` directly (confirmed live on StudioNet). A
+    detached dataclass instance (one not yet assigned into a TreeMap/
+    contract storage slot) takes a plain Python list for a DynArray-typed
+    field; the runtime allocates and populates the real on-chain DynArray
+    only at the point the containing object is written into storage
+    (e.g. `self.slas[sla_id] = sla`). So this helper is intentionally a
+    no-op beyond defensively copying the input — never construct
+    `DynArray[str]()` anywhere in this file.
+    """
+    return list(items)
 
 
 def _dynarray_to_list(arr: DynArray[str]) -> list:
@@ -844,7 +853,7 @@ class UptimeArbiter(gl.Contract):
             term_seconds=u256(term_seconds),
             evidence_sources=_str_list_to_dynarray(evidence_sources),
             source_digest=_fingerprint(evidence_sources),
-            adjudicated_windows=DynArray[str](),
+            adjudicated_windows=[],
             status=SLA_STATUS_PROPOSED,
             provider_funded=False,
             customer_signed=False,
