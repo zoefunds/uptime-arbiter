@@ -6,6 +6,19 @@ import { authRoutes } from "./routes/auth.js";
 import { protocolRoutes } from "./routes/protocol.js";
 import { healthRoutes } from "./routes/health.js";
 
+// Prisma returns BigInt for the schema's BigInt columns (registrationDeadlineTs,
+// termStartTs, termEndTs, windowStartTs, windowEndTs, challengeDeadlineTs).
+// JSON.stringify throws on a raw BigInt ("Do not know how to serialize a
+// BigInt") — every route that returns a Prisma row hits this the first time
+// a row with those columns populated actually exists. Serializing as a
+// decimal string (not a JS number) avoids precision loss for unix
+// timestamps far in the future or past, and matches how every other u256
+// value in this API is already represented (wei amounts are strings too).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(BigInt.prototype as any).toJSON = function () {
+  return this.toString();
+};
+
 async function main() {
   const app = Fastify({ logger: true });
 
