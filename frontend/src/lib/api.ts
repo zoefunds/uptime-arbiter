@@ -30,6 +30,7 @@ export interface SlaRow {
   challengeWindowSeconds: number;
   termSeconds: number;
   evidenceSources: string[];
+  exclusionTerms: string;
   sourceDigest: string;
   adjudicatedWindows: string[];
   status: string;

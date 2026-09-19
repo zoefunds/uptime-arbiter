@@ -84,6 +84,7 @@ async function upsertSla(slaId: string): Promise<void> {
       challengeWindowSeconds: Number(sla.challenge_window_seconds ?? 0),
       termSeconds: Number(sla.term_seconds ?? 0),
       evidenceSources: toStrArray(sla.evidence_sources),
+      exclusionTerms: toStr(sla.exclusion_terms),
       sourceDigest: toStr(sla.source_digest),
       adjudicatedWindows: toStrArray(sla.adjudicated_windows),
       status: toStr(sla.status),

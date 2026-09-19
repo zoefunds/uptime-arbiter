@@ -121,6 +121,14 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
               Fingerprint: <span className="text-primary">{sla.sourceDigest}</span> — immutable once
               both parties fund the SLA.
             </div>
+            {sla.exclusionTerms && (
+              <div className="mt-3 rounded bg-surface-container p-3 text-xs text-on-surface-variant">
+                <span className="mb-1 block font-mono text-[10px] uppercase text-tertiary">
+                  Pinned Exclusion Terms
+                </span>
+                {sla.exclusionTerms}
+              </div>
+            )}
           </Card>
 
           <Card>

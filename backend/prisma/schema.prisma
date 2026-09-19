@@ -67,6 +67,7 @@ model SlaAgreement {
   challengeWindowSeconds Int
   termSeconds            Int
   evidenceSources        String[]
+  exclusionTerms         String   @default("")
   sourceDigest           String
   adjudicatedWindows     String[]
   status                 String

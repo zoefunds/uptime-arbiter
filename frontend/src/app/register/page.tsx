@@ -30,6 +30,8 @@ const SAMPLE_VALUES = {
   challengeWindowHours: "72",
   termDays: "30",
   registrationTtlDays: "7",
+  exclusionTerms:
+    "Pre-announced scheduled maintenance windows, disclosed at least 24 hours in advance via the provider's status page, do not count toward breach minutes.",
 };
 
 export default function RegisterSlaPage() {
@@ -50,6 +52,7 @@ export default function RegisterSlaPage() {
   const [termDays, setTermDays] = useState("30");
   const [registrationTtlDays, setRegistrationTtlDays] = useState("7");
   const [sources, setSources] = useState(["", "", ""]);
+  const [exclusionTerms, setExclusionTerms] = useState("");
   const [done, setDone] = useState(false);
 
   function updateSource(i: number, value: string) {
@@ -73,6 +76,7 @@ export default function RegisterSlaPage() {
     setTermDays(SAMPLE_VALUES.termDays);
     setRegistrationTtlDays(SAMPLE_VALUES.registrationTtlDays);
     setSources(SAMPLE_SOURCES);
+    setExclusionTerms(SAMPLE_VALUES.exclusionTerms);
   }
 
   async function handleSubmit() {
@@ -100,6 +104,7 @@ export default function RegisterSlaPage() {
       Number(termDays) * DAY,
       Number(registrationTtlDays) * DAY,
       cleanSources,
+      exclusionTerms.trim(),
     ]);
 
     if (txId) {
@@ -203,6 +208,25 @@ export default function RegisterSlaPage() {
             + Add another source
           </button>
         )}
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 font-display text-lg font-semibold text-on-surface">
+          4. Exclusion Terms (optional)
+        </h2>
+        <p className="mb-4 text-xs text-on-surface-variant">
+          Natural-language carve-outs pinned alongside the evidence sources — e.g. pre-announced
+          maintenance windows. Each validator reasons over this text against the fetched
+          incident&apos;s own description; this is what makes evaluation genuinely interpretive
+          rather than a number a script could parse out of a JSON field.
+        </p>
+        <textarea
+          value={exclusionTerms}
+          onChange={(e) => setExclusionTerms(e.target.value)}
+          rows={3}
+          placeholder="e.g. Pre-announced scheduled maintenance, disclosed at least 24 hours in advance, does not count as breach."
+          className="w-full rounded bg-surface-container-lowest px-3 py-2 font-mono text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+        />
       </Card>
 
       <Button disabled={pending} onClick={handleSubmit} className="self-start">

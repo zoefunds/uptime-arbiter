@@ -297,14 +297,39 @@ adversarial-compromise section) rather than editing a block that wasn't
 there. If the header goes missing again, it's worth asking why before
 re-adding it — it may have been trimmed deliberately.
 
-**Contract change requires a redeploy before it's live** — as of this
-writing the changes are committed but NOT yet deployed; the live contract
-at `0xdeBf80793BD1145B9D195eeD311a01Ba25Eb09d1` is still running the
-pre-exclusion_terms version. `propose_sla` calls against it will fail with
-an argument-count mismatch until redeployed (user deploys, per project
-convention) and the new address is rewired everywhere (same sequence as
-the previous redeploy: root `.env`, `backend/.env`, `frontend/.env.local`,
-Fly secret, Vercel env var, both redeployed).
+**Redeployed** — live on GenLayer StudioNet at
+`0x8aB7b78e29D9af2b66A7B01E1D41E56Fb6595614` (the `0xdeBf80793...` address
+from the DynArray-fix redeploy is now also dead; `0x6bd7064ECc7...` was the
+one before that — three generations of dead addresses now, do not
+reference any of them). Rewired everywhere: root `.env`, `backend/.env`,
+`frontend/.env.local`, `uptime-arbiter-api` Fly secret (redeployed), Vercel
+env var (redeployed). The Postgres index cache
+(`SlaAgreement`/`Claim`/`Challenge` tables + `IndexerCursor` offsets) was
+explicitly truncated/reset before this redeploy via
+`fly postgres connect -a uptime-arbiter-db --database uptime_arbiter_api`
+— otherwise the registry would have kept showing `SLA-1`/`CLM-1`/`DSP-1`
+from the dead contract alongside anything new, with ids colliding (the new
+contract's own counter also starts at `SLA-1`).
+
+**`propose_sla`'s new 14th argument required a frontend change too** —
+`exclusion_terms: str` was added positionally at the end. Updated
+`frontend/src/app/register/page.tsx` (new textarea field + sample value)
+to pass it, added the same field to `backend/prisma/schema.prisma` /
+`indexer/poll.ts` / `lib/api.ts` for display, and to
+`frontend/src/app/registry/[slaId]/page.tsx` to show it on the SLA detail
+page. Ran a new Prisma migration (`add_exclusion_terms`) for the schema
+change. **Lesson**: any future contract signature change to a write method
+already called from the frontend needs the same three-place check —
+contract, frontend call site, and (if the field should be visible) the
+indexer + API type + display component — or the frontend will send the
+wrong argument count/order and every write silently breaks until someone
+notices.
+
+Root `README.md` was written specifically to make the GenLayer Fit
+argument (adversarial-compromise + exclusion_terms interpretive-judgment)
+visible to a reviewer without them having to read this file or the
+contract source first — see the "Why this needs GenLayer, specifically"
+section there.
 
 ## Contract test suite — `tests/direct/` (35 tests, all passing)
 Direct-mode tests via `genlayer-test` (the `gltest` pytest plugin), run in
