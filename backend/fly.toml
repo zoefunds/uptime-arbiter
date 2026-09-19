@@ -1,0 +1,54 @@
+# Uptime Arbiter backend — Fly.io deployment.
+#
+# Two always-on process groups from the same image:
+#   api      — Fastify HTTP API (auth, reads, StudioNet relay for
+#              per-user balance lookups)
+#   indexer  — background loop mirroring contract state into Postgres
+#
+# `min_machines_running = 1` per group + `auto_rollback` + the health check
+# below is what makes "the backend must never die" concrete: Fly restarts a
+# crashed machine automatically, and a machine failing /healthz is recycled
+# before it can serve degraded traffic.
+
+app = "uptime-arbiter-api"
+primary_region = "iad"
+
+[build]
+
+[processes]
+  api = "node dist/server.js"
+  indexer = "node dist/indexer/poll.js"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["api"]
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/healthz"
+
+[[vm]]
+  processes = ["api"]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+[[vm]]
+  processes = ["indexer"]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+[deploy]
+  release_command = "npx prisma migrate deploy"

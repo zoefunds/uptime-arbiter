@@ -1,0 +1,134 @@
+// Uptime Arbiter — indexer read-cache schema.
+//
+// IMPORTANT: this database is NEVER authoritative. Every row here is a
+// denormalized copy of state that already exists on the deployed
+// UptimeArbiter Intelligent Contract, written only by the indexer
+// (src/indexer/poll.ts) after reading the contract's own view methods.
+// No API route ever writes SLA/Claim/Challenge business state directly —
+// that would recreate exactly the "backend makes the decision" failure
+// mode the whole protocol exists to avoid. The only backend-owned state is
+// auth (Session/Nonce) and the indexer's own progress cursor.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Nonce {
+  id        String   @id @default(cuid())
+  address   String
+  nonce     String   @unique
+  createdAt DateTime @default(now())
+  usedAt    DateTime?
+
+  @@index([address])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  address      String
+  refreshToken String   @unique
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+
+  @@index([address])
+}
+
+model IndexerCursor {
+  // Singleton row (id always "default") tracking how far the poller has
+  // paginated through sla_order / claim_order on the contract.
+  id             String   @id @default("default")
+  slaOffset      Int      @default(0)
+  claimOffset    Int      @default(0)
+  lastRunAt      DateTime?
+  lastError      String?
+  consecutiveErrors Int   @default(0)
+}
+
+model SlaAgreement {
+  slaId                 String   @id
+  provider              String
+  customer              String
+  label                 String
+  targetUptimeBps        Int
+  graceMinutes           Int
+  penaltyRateWeiPerMin   String
+  escrowWei              String
+  escrowDeposited        String
+  bondWei                String
+  bondDeposited          String
+  challengeBondWei       String
+  toleranceMinutes       Int
+  challengeWindowSeconds Int
+  termSeconds            Int
+  evidenceSources        String[]
+  sourceDigest           String
+  adjudicatedWindows     String[]
+  status                 String
+  providerFunded         Boolean
+  customerSigned         Boolean
+  createdAt              String
+  registrationDeadlineTs BigInt
+  termStartTs            BigInt
+  termEndTs              BigInt
+  activeClaimId          String
+
+  syncedAt DateTime @updatedAt
+
+  @@index([provider])
+  @@index([customer])
+  @@index([status])
+}
+
+model Claim {
+  claimId               String   @id
+  slaId                 String
+  claimant              String
+  windowStartTs         BigInt
+  windowEndTs           BigInt
+  pinnedSources         String[]
+  pinnedSourceDigest    String
+  submittedAt           String
+  status                String
+  breachMinutes         Int
+  inconclusiveReason    String
+  recommendedPayoutBps  Int
+  payoutWei             String
+  resolvedAt            String
+  challengeDeadlineTs   BigInt
+  challengeCount        Int
+  activeChallengeId     String
+  isChallenged          Boolean
+  finalized             Boolean
+
+  syncedAt DateTime @updatedAt
+
+  @@index([slaId])
+  @@index([status])
+  @@index([claimant])
+}
+
+model Challenge {
+  challengeId        String   @id
+  claimId            String
+  challenger         String
+  additionalSources  String[]
+  rationale          String
+  bondWei            String
+  bondDeposited      String
+  filedAt            String
+  resolved           Boolean
+  outcome            String
+  resolvedAt         String
+  priorBreachMinutes Int
+  newBreachMinutes   Int
+
+  syncedAt DateTime @updatedAt
+
+  @@index([claimId])
+}
