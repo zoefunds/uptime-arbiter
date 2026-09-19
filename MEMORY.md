@@ -71,8 +71,15 @@ boundary and escrow-discipline writeup):
   `sla.adjudicated_windows` blocks re-claiming an already-ruled-on window.
 
 ## Deployed contract
-Live on GenLayer StudioNet at `0x6bd7064ECc72704D156FF5D34B2C7C3fEf9946c6`.
-Wired into `.env` (`NEXT_PUBLIC_CONTRACT_ADDRESS`) and `backend/.env`.
+Live on GenLayer StudioNet at `0xdeBf80793BD1145B9D195eeD311a01Ba25Eb09d1`
+(redeployed from commit `b24e39c` after the DynArray fix below — the
+original `0x6bd7064ECc72704D156FF5D34B2C7C3fEf9946c6` deployment is dead,
+`propose_sla` always reverts on it, do not reference it anywhere again).
+Wired into: root `.env`, `backend/.env`, `frontend/.env.local`, the
+`uptime-arbiter-api` Fly secret, and the Vercel `uptime-arbiter` project's
+`NEXT_PUBLIC_CONTRACT_ADDRESS` — both backend and frontend redeployed after
+the rewiring and reverified live (`/healthz` ok, indexer logs confirm it
+restarted pointed at the new address).
 
 ## Backend — `backend/` (done)
 Fastify API + a separate always-on indexer process, Node/TypeScript, Prisma/
@@ -196,7 +203,7 @@ runtime does the real conversion at the point the containing object is
 actually assigned into storage. Also fixed the one other bare
 `DynArray[str]()` call (`adjudicated_windows=[]` in `propose_sla`).
 **This means the contract already deployed at
-`0x6bd7064ECc72704D156FF5D34B2C7C3fEf9946c6` has this bug baked into its
+`0x6bd7064ECc72704D156FF5D34B2C7C3fEf9946c6` had this bug baked into its
 immutable bytecode and cannot self-heal — it must be redeployed from the
 fixed `contracts/UptimeArbiter.py` (commit `cd72be2`) before `propose_sla`
 will work at all.** Once redeployed, the new address needs to be re-wired
