@@ -9,6 +9,29 @@ import { genToWei } from "@/lib/format";
 
 const DAY = 24 * 3600;
 
+// Real, live, publicly reachable status endpoints — genuine machine-readable
+// evidence sources a GenLayer validator can actually fetch and parse, used
+// here purely to make testing the form fast. Not fabricated placeholders.
+const SAMPLE_SOURCES = [
+  "https://www.githubstatus.com/api/v2/summary.json",
+  "https://status.openai.com/api/v2/summary.json",
+  "https://status.aws.amazon.com/rss/ec2-us-east-1.rss",
+];
+
+const SAMPLE_VALUES = {
+  label: "GitHub Actions Runner Fleet (us-east-1)",
+  targetUptimePct: "99.95",
+  graceMinutes: "21",
+  penaltyRate: "250",
+  escrow: "50000",
+  bond: "5000",
+  challengeBond: "2500",
+  tolerance: "2",
+  challengeWindowHours: "72",
+  termDays: "30",
+  registrationTtlDays: "7",
+};
+
 export default function RegisterSlaPage() {
   const { address } = useAccount();
   const router = useRouter();
@@ -35,6 +58,21 @@ export default function RegisterSlaPage() {
 
   function addSource() {
     if (sources.length < 8) setSources((prev) => [...prev, ""]);
+  }
+
+  function fillSampleData() {
+    setLabel(SAMPLE_VALUES.label);
+    setTargetUptimePct(SAMPLE_VALUES.targetUptimePct);
+    setGraceMinutes(SAMPLE_VALUES.graceMinutes);
+    setPenaltyRate(SAMPLE_VALUES.penaltyRate);
+    setEscrow(SAMPLE_VALUES.escrow);
+    setBond(SAMPLE_VALUES.bond);
+    setChallengeBond(SAMPLE_VALUES.challengeBond);
+    setTolerance(SAMPLE_VALUES.tolerance);
+    setChallengeWindowHours(SAMPLE_VALUES.challengeWindowHours);
+    setTermDays(SAMPLE_VALUES.termDays);
+    setRegistrationTtlDays(SAMPLE_VALUES.registrationTtlDays);
+    setSources(SAMPLE_SOURCES);
   }
 
   async function handleSubmit() {
@@ -80,17 +118,30 @@ export default function RegisterSlaPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 lg:px-6">
-      <div>
-        <span className="mb-1 block font-mono text-[10px] uppercase tracking-widest text-primary">
-          Agreement Initialization
-        </span>
-        <h1 className="font-display text-2xl font-bold uppercase text-on-surface lg:text-3xl">
-          Register Autonomous SLA Agreement
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-on-surface-variant">
-          You propose the terms and pin the evidence sources now. The customer must separately
-          co-sign and lock their bond before this SLA activates and escrow locks.
-        </p>
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+        <div>
+          <span className="mb-1 block font-mono text-[10px] uppercase tracking-widest text-primary">
+            Agreement Initialization
+          </span>
+          <h1 className="font-display text-2xl font-bold uppercase text-on-surface lg:text-3xl">
+            Register Autonomous SLA Agreement
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-on-surface-variant">
+            You propose the terms and pin the evidence sources now. The customer must separately
+            co-sign and lock their bond before this SLA activates and escrow locks.
+          </p>
+        </div>
+        <Button variant="secondary" onClick={fillSampleData} className="shrink-0">
+          Fill Sample Data
+        </Button>
+      </div>
+
+      <div className="rounded bg-surface-container-lowest px-4 py-3 font-mono text-xs text-on-surface-variant">
+        &quot;Fill Sample Data&quot; fills every field except <strong className="text-on-surface">Customer
+        Address</strong> — that one has to be a real wallet you control (a second account in your
+        wallet extension works), since it&apos;s who will be required to co-sign and can later
+        withdraw claim payouts. The three evidence sources it fills in are real, live public status
+        endpoints (GitHub, OpenAI, AWS), not placeholders.
       </div>
 
       {error && <div className="rounded bg-error/10 px-4 py-3 font-mono text-xs text-error">{error}</div>}
