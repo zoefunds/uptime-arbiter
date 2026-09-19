@@ -20,9 +20,12 @@ round before funds finalize and become withdrawable.
 - **Auth**: wallet-based, SIWE-style message signing. No custody of user keys.
 - **Wallet connect UI**: Reown AppKit (WalletConnect). Project ID in `.env`
   as `NEXT_PUBLIC_REOWN_PROJECT_ID`.
-- **Rate limiting**: Redis (Upstash), because GenLayer StudioNet enforces a
-  30 req/min RPC limit — backend must queue/throttle indexer + write-relay
-  calls against that ceiling. `REDIS_URL` in `.env`.
+- **Rate limiting**: Redis (Upstash), because GenLayer StudioNet enforces an
+  RPC ceiling — backend must queue/throttle indexer + write-relay calls
+  against it. **Actual confirmed limit is 500 requests/hour**, not 30/min
+  (30/min sustained would be 1800/hour — a limiter built around that
+  assumption locked the indexer out entirely on first real use; see the
+  live-bug section below). `REDIS_URL` in `.env`.
 - **Evidence sources**: minimum 3 (max 8), jointly agreed — provider proposes
   at `propose_sla()`, customer must co-sign with a matching source-list
   fingerprint via `co_sign_and_lock_bond()` before the SLA activates.
@@ -229,6 +232,34 @@ how every wei amount in this API is already represented as a string (never
 a JS number, to avoid precision loss). If this pattern is ever refactored
 away (e.g. moving off Prisma, or switching serializers), re-verify BigInt
 columns don't silently break every route that returns them again.
+
+## Live bug found & fixed: wrong rate-limit ceiling
+The indexer locked itself out entirely (every cycle failing with
+`GenLayer RPC error (gen_call): Rate limit exceeded: 500 requests per
+hour`), which stalled the registry page showing `SLA-1` as `PROPOSED`
+minutes after `co_sign_and_lock_bond` had actually succeeded and the
+contract was already `ACTIVE` (confirmed by reading `get_sla` directly from
+the contract, bypassing the Postgres cache entirely). Root cause: the
+original rate limiter (`backend/src/lib/rateLimiter.ts`) was built around
+the project brief's stated "30 requests/minute" ceiling, sustained at
+~24/min — which is ~1440/hour, nearly 3x the *actual* limit StudioNet
+enforces (confirmed directly from the RPC error text: 500/hour). Fixed by
+rewriting the limiter as a genuine 1-hour sliding window capped at 420
+(500 − 80 safety margin), dropping the indexer's per-cycle budget from 8 to
+6, and slowing its poll interval from 15s to 60s (360 calls/hour worst
+case, leaving headroom for live API relay reads sharing the same limiter).
+**This only ever affected our own backend's reads** (indexer sync,
+`/protocol/stats`, `/protocol/withdrawable`) — user wallet writes go
+directly from the browser to StudioNet via genlayer-js, bypassing the
+backend entirely, which is why the actual contract call succeeded live
+even while the indexer was locked out. StudioNet's own server-side counter
+for our backend's IP doesn't reset just because we deploy a fix — it drains
+on its own roughly an hour after the offending burst. **If similar
+"backend appears stuck / data appears stale" reports come up again, check
+`fly logs -a uptime-arbiter-api | grep -i "rate limit"` and cross-check the
+live contract state directly (a one-off `readContract` call, like the one
+used to diagnose this) before assuming a write failed** — the write is very
+likely fine; it's almost always the indexer's read side falling behind.
 
 ## Next phases (not yet built)
 1. End-to-end verification with a real wallet: propose an SLA, fund escrow
