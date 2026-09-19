@@ -385,6 +385,28 @@ Fixed two ways:
    "submitted but we stopped watching," never `error`** — conflating the
    two trains users to distrust successful writes.
 
+## Full lifecycle re-run on current deployment (post-fixes) — verified live
+User ran the lifecycle again on `0x8aB7b78e29D9af2b66A7B01E1D41E56Fb6595614`
+after the exclusion_terms + ACCEPTED-timeout fixes. Verified directly
+against indexed contract state (not just UI):
+- `SLA-1` — `ACTIVE`, exclusion_terms pinned and populated, both sides
+  fully funded.
+- `CLM-1` — evaluated, `RESOLVED_NO_BREACH`, and a full challenge round
+  ran (`challengeCount: 1`) — resolved correctly, with the losing party's
+  25 GEN challenge bond credited to the winner's withdrawable balance.
+- No `ACCEPTED`/timeout errors surfaced anywhere — the transaction-wait fix
+  held under real use.
+- `finalize_claim`/`withdraw` on this specific claim are correctly blocked
+  until the challenge window closes (~3 days out, since filing the
+  challenge re-extended the deadline as designed) — not re-exercised on
+  this claim, but already proven both live (prior deployment) and by 4
+  direct-mode tests, so this isn't an open question, just a real-time gate.
+
+At this point every major mechanism has been verified live at least once:
+registration, dual-sided funding/activation, claim pinning, independent
+multi-source evaluation, challenge filing + resolution (both UPHELD and,
+earlier, OVERTURNED), finalization, and withdrawal.
+
 ## Mobile responsiveness pass
 Checked every page (landing, registry, register, vault — claim detail
 requires live data, not visually checked) at 375x812 via the browser
