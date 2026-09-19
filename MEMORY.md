@@ -154,13 +154,40 @@ repo-local (`git config user.name/email`, not global) — `zoefunds` /
 Commit and push after each meaningful chunk of work, per standing
 instruction — don't wait to be asked again.
 
+## Deployment — live
+- **Backend**: `uptime-arbiter-api.fly.dev` (Fly.io, app `uptime-arbiter-api`),
+  two always-on process groups (`api`, `indexer`) per `fly.toml`, backed by
+  Fly Postgres app `uptime-arbiter-db`. `/healthz` green, indexer confirmed
+  running against the live contract in Fly logs.
+- **Frontend**: `https://uptime-arbiter.vercel.app` (Vercel project
+  `uptime-arbiter`, scope `adebiyi2002gmailcoms-projects`). Browser-verified:
+  landing page renders, live stats ribbon successfully CORS-fetches from the
+  Fly backend and shows real (zeroed) on-chain state, AppKit wallet-connect
+  button renders correctly.
+- Two real deploy issues hit and fixed, worth remembering for any future
+  redeploy of this backend:
+  1. **Fly IP provisioning failed on first deploy** ("org_slug is only
+     supported with private_v6 type") — fixed by running
+     `fly ips allocate-v4 --shared` and `fly ips allocate-v6` manually
+     before redeploying.
+  2. **`prisma migrate deploy` failed in the release_command machine** with
+     an opaque `Error: Schema engine error:` (no detail) — this is the
+     classic Prisma-on-`node:20-slim` missing-OpenSSL problem (the
+     accompanying warning about defaulting to `openssl-1.1.x` is the tell).
+     Confirmed by running the same migration successfully through a local
+     `fly proxy` tunnel (which uses the local machine's own OpenSSL, not the
+     container's). Fixed by adding
+     `apt-get install -y openssl ca-certificates` to the `Dockerfile`'s
+     base stage. If this Dockerfile is ever rewritten from scratch, this
+     line is easy to drop and the failure it prevents is easy to misdiagnose
+     as a DB connectivity problem instead of a missing-library problem.
+
 ## Next phases (not yet built)
-1. Actually deploy the backend to Fly.io (built + verified locally, not yet
-   shipped) and the frontend to Vercel (built + verified locally, not yet
-   shipped).
-2. End-to-end verification with a real wallet: propose an SLA, fund escrow
+1. End-to-end verification with a real wallet: propose an SLA, fund escrow
    from both sides, submit a claim, trigger evaluation, optionally
    challenge, finalize, withdraw — the full lifecycle, live on StudioNet.
+   Not yet done — needs a human with a real wallet extension, not possible
+   from this environment.
 
 ## Source material referenced (read, not copied)
 - `~/Downloads/UPTIME-ARBITER.md` — master build prompt / working rules.
