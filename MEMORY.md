@@ -385,6 +385,30 @@ Fixed two ways:
    "submitted but we stopped watching," never `error`** — conflating the
    two trains users to distrust successful writes.
 
+## Mobile responsiveness pass
+Checked every page (landing, registry, register, vault — claim detail
+requires live data, not visually checked) at 375x812 via the browser
+pane's mobile preset. Found one real bug: the header's nav links were
+`hidden xl:flex` with **zero mobile fallback** — below the `xl` breakpoint
+there was no way to reach Registry/Register/Claims/Vault at all except the
+two landing-page CTAs. Everything else (cards, grids, buttons, forms,
+empty states) reflows correctly — the design's `grid-cols-1 md:...`/
+`xl:...` patterns were already mobile-first.
+
+Fixed in `frontend/src/components/site-header.tsx`: added a hamburger
+button (`xl:hidden`) that toggles a full-width dropdown nav panel, and
+made the logo/title/badge row itself responsive (title truncates instead
+of wrapping to two lines, the "StudioNet" badge hides below `sm` to save
+space — it was crowding "Connect Wallet" off the visible area on a 375px
+viewport). Verified visually: title fits on one line, hamburger opens/
+closes correctly, all four links reachable and functional.
+
+Not verified in this pass: real touch-target sizing on an actual device
+(browser emulation approximates but doesn't guarantee), and the claims/
+[claimId] and registry/[slaId] detail pages with real populated data
+(current registry is empty post-database-clear) — worth a follow-up once
+there's a live SLA/claim to render.
+
 ## Next phases (not yet built)
 1. End-to-end verification with a real wallet: propose an SLA, fund escrow
    from both sides, submit a claim, trigger evaluation, optionally
