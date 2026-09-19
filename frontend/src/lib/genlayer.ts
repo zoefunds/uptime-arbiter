@@ -47,14 +47,36 @@ export async function writeContractMethod(
     value: value ?? 0n,
   });
 
-  // Wait for real on-chain finality via the SDK's own lifecycle tracking —
-  // never a client-side timer standing in for status polling.
-  const receipt = await client.waitForTransactionReceipt({
-    hash: txId,
-    status: TransactionStatus.FINALIZED,
-  });
-
-  return { txId, receipt };
+  // Track real on-chain lifecycle via the SDK's own status polling — never
+  // a client-side timer standing in for it. We wait for ACCEPTED, not
+  // FINALIZED: state changes (escrow locked, claim pinned, verdict
+  // recorded, ...) already apply once a transaction is ACCEPTED —
+  // FINALIZED only means the appeal window has additionally closed. The
+  // SDK's own default retry budget (3s interval x 10 retries = 30s) is
+  // tuned for ACCEPTED, not for FINALIZED, which routinely takes longer
+  // than that; waiting on FINALIZED with the default budget was
+  // surfacing "Timed out... (current status: 5)" — status 5 is ACCEPTED,
+  // i.e. the write had already succeeded — as if it were a failure.
+  try {
+    const receipt = await client.waitForTransactionReceipt({
+      hash: txId,
+      status: TransactionStatus.ACCEPTED,
+      interval: 2_500,
+      retries: 60, // up to ~2.5 minutes, generous for a normal consensus round
+    });
+    return { txId, receipt, timedOut: false };
+  } catch (err) {
+    // The transaction was already submitted and broadcast at this point —
+    // a polling timeout here means the SDK gave up watching, not that the
+    // write failed. Surface txId so the caller can still tell the user
+    // "submitted, check back" instead of "failed", and let them verify via
+    // the explorer or a subsequent read rather than silently losing the
+    // reference to a transaction that may well succeed a minute later.
+    const message = err instanceof Error ? err.message : String(err);
+    // eslint-disable-next-line no-console
+    console.warn(`waitForTransactionReceipt gave up on ${txId}, tx may still finalize:`, message);
+    return { txId, receipt: null, timedOut: true };
+  }
 }
 
 export async function readContractMethod<T>(

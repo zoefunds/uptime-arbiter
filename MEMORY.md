@@ -358,6 +358,33 @@ unhandled `EthSend` trace), or real web/LLM behavior (everything mocked).
 Those are only verified against the live deployed contract (see the
 "Live bug found & fixed" sections above, all from real StudioNet usage).
 
+## Live bug found & fixed: frontend timeout waiting for FINALIZED
+Real user report: `"Timed out waiting for transaction 0xb627... to reach
+status "FINALIZED" (current status: 5)."` — status 5 is `ACCEPTED`, i.e.
+the write had already succeeded. Root cause: `genlayer-js`'s
+`waitForTransactionReceipt` defaults to `interval: 3000ms, retries: 10`
+(30 seconds total) — tuned for the default target status (`ACCEPTED`), but
+`frontend/src/lib/genlayer.ts` was explicitly requesting `FINALIZED`, which
+requires clearing the full propose→commit→reveal→accept cycle *plus* the
+appeal window, routinely taking longer than 30s. Every write in the app
+was one slow consensus round away from surfacing a false failure.
+
+Fixed two ways:
+1. Wait for `ACCEPTED` instead of `FINALIZED` — state changes (escrow
+   locked, claim pinned, verdict recorded, ...) already apply once a
+   transaction is `ACCEPTED`; `FINALIZED` only additionally means the
+   appeal window has closed. Bumped the budget to `interval: 2500ms,
+   retries: 60` (~2.5 min) for extra headroom.
+2. Even if that still times out, `writeContractMethod` no longer throws —
+   it catches the polling timeout and returns `{ txId, receipt: null,
+   timedOut: true }`, since the transaction was already submitted by that
+   point and a client giving up on watching it is not the same as the
+   write failing. `useGenlayerWrite` surfaces this as a `warning` (tertiary/
+   amber UI), not an `error` (red UI) — every page using the hook now
+   destructures both. **If a future write flow is added, use `warning` for
+   "submitted but we stopped watching," never `error`** — conflating the
+   two trains users to distrust successful writes.
+
 ## Next phases (not yet built)
 1. End-to-end verification with a real wallet: propose an SLA, fund escrow
    from both sides, submit a claim, trigger evaluation, optionally

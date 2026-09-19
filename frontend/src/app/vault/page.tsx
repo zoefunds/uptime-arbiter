@@ -10,7 +10,7 @@ import { useGenlayerWrite } from "@/hooks/use-genlayer-write";
 export default function VaultPage() {
   const { address } = useAccount();
   const queryClient = useQueryClient();
-  const { send, pending, error, txId } = useGenlayerWrite();
+  const { send, pending, error, warning, txId } = useGenlayerWrite();
 
   const { data, isLoading } = useQuery({
     queryKey: ["withdrawable", address],
@@ -57,9 +57,10 @@ export default function VaultPage() {
       </div>
 
       {error && <div className="rounded bg-error/10 px-4 py-3 font-mono text-xs text-error">{error}</div>}
+      {warning && <div className="rounded bg-tertiary/10 px-4 py-3 font-mono text-xs text-tertiary">{warning}</div>}
       {txId && (
         <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">
-          Withdrawal finalized: {txId}
+          Withdrawal accepted: {txId}
         </div>
       )}
 

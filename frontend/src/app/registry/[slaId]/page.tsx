@@ -13,7 +13,7 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
   const { slaId } = use(params);
   const { address } = useAccount();
   const queryClient = useQueryClient();
-  const { send, pending, error: writeError, txId } = useGenlayerWrite();
+  const { send, pending, error: writeError, warning: writeWarning, txId } = useGenlayerWrite();
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
 
@@ -80,9 +80,12 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
       {writeError && (
         <div className="rounded bg-error/10 px-4 py-3 font-mono text-xs text-error">{writeError}</div>
       )}
-      {txId && (
+      {writeWarning && (
+        <div className="rounded bg-tertiary/10 px-4 py-3 font-mono text-xs text-tertiary">{writeWarning}</div>
+      )}
+      {txId && !writeWarning && (
         <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">
-          Transaction finalized: {txId}
+          Transaction accepted: {txId}
         </div>
       )}
 

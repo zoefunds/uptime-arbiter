@@ -37,7 +37,7 @@ const SAMPLE_VALUES = {
 export default function RegisterSlaPage() {
   const { address } = useAccount();
   const router = useRouter();
-  const { send, pending, error, txId } = useGenlayerWrite();
+  const { send, pending, error, warning, txId } = useGenlayerWrite();
 
   const [customer, setCustomer] = useState("");
   const [label, setLabel] = useState("");
@@ -150,9 +150,10 @@ export default function RegisterSlaPage() {
       </div>
 
       {error && <div className="rounded bg-error/10 px-4 py-3 font-mono text-xs text-error">{error}</div>}
+      {warning && <div className="rounded bg-tertiary/10 px-4 py-3 font-mono text-xs text-tertiary">{warning}</div>}
       {done && (
         <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">
-          SLA proposed — transaction finalized ({txId}). Redirecting to the registry…
+          SLA proposed — transaction accepted ({txId}). Redirecting to the registry…
         </div>
       )}
 

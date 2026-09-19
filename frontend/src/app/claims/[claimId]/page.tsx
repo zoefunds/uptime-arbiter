@@ -14,7 +14,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
   const { claimId } = use(params);
   const { address } = useAccount();
   const queryClient = useQueryClient();
-  const { send, pending, error: writeError, txId } = useGenlayerWrite();
+  const { send, pending, error: writeError, warning: writeWarning, txId } = useGenlayerWrite();
 
   const [slaId, setSlaId] = useState<string | null>(null);
   const [challengeUrl1, setChallengeUrl1] = useState("");
@@ -95,9 +95,10 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
       </div>
 
       {writeError && <div className="rounded bg-error/10 px-4 py-3 font-mono text-xs text-error">{writeError}</div>}
-      {txId && (
+      {writeWarning && <div className="rounded bg-tertiary/10 px-4 py-3 font-mono text-xs text-tertiary">{writeWarning}</div>}
+      {txId && !writeWarning && (
         <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">
-          Transaction finalized: {txId}
+          Transaction accepted: {txId}
         </div>
       )}
 
