@@ -39,7 +39,7 @@ Put together: the decision GenLayer is making is *"does this incident, as descri
 
 ## The trust boundary, concretely
 
-This is the section most reviewers check first, so it's also written directly into the contract's own header comment — not just here.
+This is the section most reviewers check first. It's grounded directly in the contract's own code — every mechanism named below (pinning, independent fetch, the Equivalence Principle comparison, the deterministic/nondeterministic split, additive-only challenges) is enforced in [`contracts/UptimeArbiter.py`](contracts/UptimeArbiter.py) itself, not just described here.
 
 - Evidence sources are pinned at `propose_sla()`, before any claim exists. `submit_claim()` can never introduce a new primary source.
 - `submit_claim()` immediately snapshots the claimed window and a digest of the evidence-source list, before any validator evaluation begins.
@@ -75,7 +75,7 @@ The backend is a pure read cache. It never makes a breach determination, never p
 
 ## Repository layout
 
-- [`contracts/UptimeArbiter.py`](contracts/UptimeArbiter.py) — the single Intelligent Contract. Start with its header comment for the full trust-boundary and escrow-discipline writeup.
+- [`contracts/UptimeArbiter.py`](contracts/UptimeArbiter.py) — the single Intelligent Contract. `_run_breach_consensus` and `_compute_settlement` are the two functions to read first for the trust-boundary and escrow-discipline mechanics described above.
 - [`tests/direct/`](tests/direct/) — 35 direct-mode tests (registration, evaluation, challenges, settlement, and a direct proof that the Equivalence Principle validator re-derives its answer rather than trusting the leader). See [`tests/README.md`](tests/README.md).
 - [`backend/`](backend/) — Fastify API + indexer, Postgres, Redis rate limiter. See [`backend/README.md`](backend/README.md) for local dev and Fly deployment.
 - [`frontend/`](frontend/) — Next.js app: landing, SLA registry, registration flow, adjudication room, vault/withdrawals. See [`frontend/README.md`](frontend/README.md).
