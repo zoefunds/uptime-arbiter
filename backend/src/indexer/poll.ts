@@ -34,7 +34,7 @@ const RESOLVED_CLAIM_STATUSES = [
   "RESOLVED_NO_BREACH",
 ];
 
-const MAX_RPC_CALLS_PER_CYCLE = 8;
+const MAX_RPC_CALLS_PER_CYCLE = 6;
 
 class Budget {
   remaining = MAX_RPC_CALLS_PER_CYCLE;

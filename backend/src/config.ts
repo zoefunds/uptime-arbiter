@@ -24,16 +24,25 @@ export const config = {
     chainId: Number(process.env.GENLAYER_CHAIN_ID ?? 61999),
     networkAlias: process.env.GENLAYER_NETWORK_ALIAS ?? "studionet",
     contractAddress: required("NEXT_PUBLIC_CONTRACT_ADDRESS"),
-    // GenLayer StudioNet enforces a 30 requests/minute RPC ceiling. Every
-    // outbound RPC call in this service — indexer reads AND any relayed
-    // reads from the API — goes through lib/rateLimiter.ts, which caps
-    // itself below this with headroom for the frontend's own direct reads.
-    rpcRateLimitPerMinute: 30,
-    rpcRateLimitSafetyMargin: 6, // stay at <= 24/min from THIS service
+    // GenLayer StudioNet's real ceiling, confirmed live from an actual RPC
+    // error ("Rate limit exceeded: 500 requests per hour") — NOT a 30/min
+    // limit as originally assumed from the project brief. The two are very
+    // different shapes: 30/min sustained would be 1800/hour, so a limiter
+    // built around a per-minute budget silently blew ~3x past the real
+    // hourly ceiling and locked the indexer out entirely. See
+    // lib/rateLimiter.ts, which now enforces a genuine 1-hour sliding
+    // window against this number.
+    rpcRateLimitPerHour: 500,
+    rpcRateLimitSafetyMargin: 80, // stay at <= 420/hour from THIS service
   },
 
   indexer: {
-    pollIntervalMs: 15_000,
+    // Kept deliberately conservative: at MAX_RPC_CALLS_PER_CYCLE = 6 in
+    // poll.ts, 60s cycles cap the indexer at 360 calls/hour on its own,
+    // leaving headroom under the 420/hour effective limit for live API
+    // relay reads (per-user withdrawable-balance lookups, /protocol/stats)
+    // sharing the same limiter.
+    pollIntervalMs: 60_000,
     pageSize: 50,
     maxConsecutiveErrorsBeforeBackoff: 5,
     backoffMs: 60_000,
