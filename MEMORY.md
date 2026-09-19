@@ -182,6 +182,30 @@ instruction — don't wait to be asked again.
      line is easy to drop and the failure it prevents is easy to misdiagnose
      as a DB connectivity problem instead of a missing-library problem.
 
+## Live bug found & fixed: DynArray can't be user-instantiated
+First real `propose_sla()` attempt on StudioNet failed with
+`TypeError: this class can't be instantiated by user` from
+`DynArray[str].__init__`. Root cause: `DynArray` (and presumably `TreeMap`)
+are storage-only types — GenVM allocates them only when a value is written
+into an actual storage slot (e.g. `self.slas[sla_id] = sla`); calling
+`DynArray[str]()` directly in user code, even to build a value for a
+not-yet-stored dataclass field, is rejected outright. Fixed by making
+`_str_list_to_dynarray()` just return a plain Python `list` — a detached
+dataclass instance takes a plain list for a `DynArray`-typed field, and the
+runtime does the real conversion at the point the containing object is
+actually assigned into storage. Also fixed the one other bare
+`DynArray[str]()` call (`adjudicated_windows=[]` in `propose_sla`).
+**This means the contract already deployed at
+`0x6bd7064ECc72704D156FF5D34B2C7C3fEf9946c6` has this bug baked into its
+immutable bytecode and cannot self-heal — it must be redeployed from the
+fixed `contracts/UptimeArbiter.py` (commit `cd72be2`) before `propose_sla`
+will work at all.** Once redeployed, the new address needs to be re-wired
+into: root `.env`, `backend/.env`, `backend` Fly secrets
+(`fly secrets set NEXT_PUBLIC_CONTRACT_ADDRESS=... -a uptime-arbiter-api`
++ redeploy), and the Vercel env var (`vercel env rm/add
+NEXT_PUBLIC_CONTRACT_ADDRESS` + redeploy) — same sequence as the original
+wiring, just pointed at the new address.
+
 ## Next phases (not yet built)
 1. End-to-end verification with a real wallet: propose an SLA, fund escrow
    from both sides, submit a claim, trigger evaluation, optionally
