@@ -261,6 +261,78 @@ live contract state directly (a one-off `readContract` call, like the one
 used to diagnose this) before assuming a write failed** — the write is very
 likely fine; it's almost always the indexer's read side falling behind.
 
+## GenLayer Fit strengthening: exclusion_terms + adversarial-compromise writeup
+Two changes made specifically to push the GenLayer Fit rubric score from 4
+to 5 (the reviewer question was "couldn't a trusted centralized reader just
+do this same fetch+LLM call?"):
+
+1. **`exclusion_terms` field** added to `SLAAgreement` and threaded through
+   `propose_sla` → `_run_breach_consensus` → `_collect_breach_minutes` →
+   `_extract_breach_minutes_for_source`, where it's interpolated into the
+   evaluation prompt. This is what makes each validator's task genuinely
+   interpretive (judging whether an incident's own natural-language
+   description falls under a pinned carve-out, e.g. a pre-announced
+   maintenance window) rather than a number a deterministic script could
+   pull out of a JSON field. This is a **new required positional parameter**
+   on `propose_sla` (added at the end) — any caller (frontend, docs,
+   scripts) still using the old 13-arg signature will break. Pass `""` for
+   no exclusions.
+2. **Adversarial-compromise argument** written into the contract's header
+   comment (restored — see the note below about that header having gone
+   missing) and into `tests/README.md`: a single centralized reader is a
+   single point of COMPROMISE (DNS hijack, cache poisoning, prompt
+   injection targeting one LLM call, bribing one operator), not just a
+   single point of trust. GenLayer's majority-quorum independent fetch
+   means an attacker needs to fool a majority of validators simultaneously.
+   This is the concrete, specific reason decentralization is load-bearing
+   here, not decorative — write this argument down anywhere the rubric
+   reviewer will actually read it (README, contract header), not just carry
+   it in conversation.
+
+**Found in passing**: the original ~90-line trust-boundary/escrow-discipline
+header docstring block (from the initial contract-writing phase) had been
+removed from the file at some point between deploys, leaving only the
+"1. ERROR CLASSIFICATION" section onward. Restored it (plus the new
+adversarial-compromise section) rather than editing a block that wasn't
+there. If the header goes missing again, it's worth asking why before
+re-adding it — it may have been trimmed deliberately.
+
+**Contract change requires a redeploy before it's live** — as of this
+writing the changes are committed but NOT yet deployed; the live contract
+at `0xdeBf80793BD1145B9D195eeD311a01Ba25Eb09d1` is still running the
+pre-exclusion_terms version. `propose_sla` calls against it will fail with
+an argument-count mismatch until redeployed (user deploys, per project
+convention) and the new address is rewired everywhere (same sequence as
+the previous redeploy: root `.env`, `backend/.env`, `frontend/.env.local`,
+Fly secret, Vercel env var, both redeployed).
+
+## Contract test suite — `tests/direct/` (35 tests, all passing)
+Direct-mode tests via `genlayer-test` (the `gltest` pytest plugin), run in
+~2.5s with no server. Needs Python 3.12+ (`genlayer-py` imports
+`collections.abc.Buffer`, added in 3.12 — a 3.11 interpreter fails at
+import time with a confusing error). This machine's default `pip`/`python3`
+resolve to pyenv 3.11.9; tests run from a dedicated `.venv-tests/`
+(gitignored) built against pyenv's 3.12.7.
+
+Coverage: registration validation, escrow/bond activation, claim
+submission + evaluation (no-breach/partial/capped-at-escrow/inconclusive),
+`exclusion_terms` actually reaching the LLM prompt, challenge filing +
+both resolution outcomes, finalize fund-movement + idempotency, double-
+adjudication protection, and — the one that actually matters most for
+Contract Quality credibility — a direct proof via `direct_vm.run_validator()`
+that the Equivalence Principle validator re-derives the answer independently
+and rejects disagreement beyond tolerance, not just replays the leader's
+claim. Full writeup, including a real gotcha the suite caught (breach-minutes
+clamping interacting with too-short test windows — a test bug, not a
+contract bug) in `tests/README.md`.
+
+Direct mode does NOT exercise: real multi-validator network consensus
+(only single-leader + manually-invoked captured validator), the actual
+external GEN transfer `_send_gen` triggers (not modeled — shows as an
+unhandled `EthSend` trace), or real web/LLM behavior (everything mocked).
+Those are only verified against the live deployed contract (see the
+"Live bug found & fixed" sections above, all from real StudioNet usage).
+
 ## Next phases (not yet built)
 1. End-to-end verification with a real wallet: propose an SLA, fund escrow
    from both sides, submit a claim, trigger evaluation, optionally

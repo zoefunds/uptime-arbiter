@@ -10,3 +10,7 @@ build/
 .venv/
 __pycache__/
 *.pyc
+.venv-tests/
+artifacts/
+.pytest_cache/
+gltest.config.yaml
