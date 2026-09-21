@@ -75,11 +75,13 @@ The backend is a pure read cache. It never makes a breach determination, never p
 
 ## Repository layout
 
-- [`contracts/UptimeArbiter.py`](contracts/UptimeArbiter.py) — the single Intelligent Contract. `_run_breach_consensus` and `_compute_settlement` are the two functions to read first for the trust-boundary and escrow-discipline mechanics described above.
+- [`contracts/UptimeArbiter.py`](contracts/UptimeArbiter.py) — the single Intelligent Contract. `_run_breach_consensus` and `_compute_settlement` are the two functions to read first for the trust-boundary and escrow-discipline mechanics described above. Full method-by-method interface reference: [`contracts/README.md`](contracts/README.md).
 - [`tests/direct/`](tests/direct/) — 35 direct-mode tests (registration, evaluation, challenges, settlement, and a direct proof that the Equivalence Principle validator re-derives its answer rather than trusting the leader). See [`tests/README.md`](tests/README.md).
 - [`backend/`](backend/) — Fastify API + indexer, Postgres, Redis rate limiter. See [`backend/README.md`](backend/README.md) for local dev and Fly deployment.
 - [`frontend/`](frontend/) — Next.js app: landing, SLA registry, registration flow, adjudication room, vault/withdrawals. See [`frontend/README.md`](frontend/README.md).
 - [`MEMORY.md`](MEMORY.md) — running log of every architecture decision and every real bug found (with root cause and fix) across the contract, backend, and frontend, including issues only surfaced by live StudioNet usage.
+- [`.env.example`](.env.example) — root env template; see also `backend/.env.example` and `frontend/.env.local.example`.
+- [`LICENSE`](LICENSE) — MIT.
 
 ## Status
 

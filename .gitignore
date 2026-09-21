@@ -14,3 +14,4 @@ __pycache__/
 artifacts/
 .pytest_cache/
 gltest.config.yaml
+video/out/
