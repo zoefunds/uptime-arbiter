@@ -11,7 +11,8 @@
     "indexer:start": "node dist/indexer/poll.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
-    "prisma:migrate:dev": "prisma migrate dev"
+    "prisma:migrate:dev": "prisma migrate dev",
+    "e2e:propose-sla": "node scripts/e2e-propose-sla.mjs"
   },
   "dependencies": {
     "@fastify/cookie": "^9.4.0",

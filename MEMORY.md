@@ -508,6 +508,51 @@ AND backend/indexer/API types, not just the contract):
   `add_covered_service`), `frontend/src/lib/api.ts`'s `SlaRow` type, and
   the SLA detail page display.
 
+## Live e2e verification on redeployed contract `0x61D6F3bdf53118523572a141F7E1904591147F94`
+User deployed the review-fixes contract (target/service materiality, quorum
+exclusion, finalize-concludes-SLA — see the section above) and asked for a
+real end-to-end test that would reflect on the frontend, using real detailed
+data, after clearing the previous contract's DB rows.
+
+Sequence run:
+1. Rewired the new address into root `.env`, `backend/.env`,
+   `frontend/.env.local`.
+2. Truncated `SlaAgreement`/`Claim`/`Challenge` and reset `IndexerCursor` via
+   `fly postgres connect -a uptime-arbiter-db`.
+3. `fly deploy --app uptime-arbiter-api` to ship the `coveredService`
+   indexer mapping (new Prisma column from the review fixes).
+4. Wrote `backend/scripts/e2e-propose-sla.mjs` (kept permanently, wired up
+   as `npm run e2e:propose-sla` in `backend/package.json`) — generates real
+   fresh GenLayer accounts via `generatePrivateKey()`/`createAccount()` and
+   calls `propose_sla` live on StudioNet with real, detailed, non-placeholder
+   data (real evidence source URLs, a real covered-service string, 99.90%
+   target uptime, real exclusion terms, realistic escrow/bond/penalty
+   amounts). No browser wallet needed since `propose_sla` is non-payable.
+5. Updated Vercel's `NEXT_PUBLIC_CONTRACT_ADDRESS` + rebuilt +
+   `vercel deploy --prod` (frontend env vars are inlined at Next.js build
+   time, not read at runtime — this step is easy to forget after only
+   redeploying the backend).
+6. Verified live on `https://uptime-arbiter.vercel.app/registry/SLA-1` via
+   `get_page_text` (not just a screenshot) — `covered_service` and the
+   derived `grace_minutes` (43 min, matching the exact on-chain formula)
+   both render correctly, proving the two new review-fix fields flow all
+   the way from contract → indexer → API → frontend.
+
+**Race condition hit and fixed**: ran the e2e `propose_sla` call while
+`fly deploy` (step 3) was still finishing in the background. The OLD
+indexer machine picked up and created the `SlaAgreement` row for `SLA-1`
+before the new code was live, writing `coveredService` as `""` (the Prisma
+column default). Because `coveredService` follows the same "immutable,
+create-only" pattern as `sourceDigest`/`evidenceSources` (intentionally
+excluded from the indexer's periodic `update` block since these fields
+never change post-creation), it could never self-heal on its own — the row
+needed the DB truncated a second time and a fresh `propose_sla` call issued
+only after confirming (via task exit code) that the deploy had actually
+finished. **Lesson: never fire e2e/test data generation concurrently with a
+deploy that changes indexer field-mapping — wait for deploy completion
+confirmation first**, especially when the new field lands only in the
+`create` path.
+
 ## Next phases
 The full lifecycle (propose → fund → activate → claim → evaluate →
 challenge → resolve) is done and verified live, more than once, on more
