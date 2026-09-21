@@ -6,6 +6,7 @@ from conftest import (
     propose_default_sla,
     activate_default_sla,
     mock_all_sources_report,
+    mock_sources_mixed,
     hexaddr,
 )
 
@@ -191,3 +192,156 @@ def test_exclusion_terms_are_passed_into_the_evaluation_prompt(
 
     contract.evaluate_claim(claim_id)
     assert contract.get_claim(claim_id)["status"] == "RESOLVED_NO_BREACH"
+
+
+def test_covered_service_is_passed_into_the_evaluation_prompt(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """covered_service is pinned so a status page listing several services
+    can't have an unrelated incident miscounted against this SLA — assert
+    it actually reaches the prompt each validator reasons over."""
+    contract, sla_id, sla = _active_sla(
+        direct_vm,
+        direct_deploy,
+        direct_alice,
+        direct_bob,
+        covered_service="Checkout API (payments-eu-west)",
+    )
+    start = int(sla["term_start_ts"]) + 60
+
+    direct_vm.sender = direct_bob
+    claim_id = contract.submit_claim(sla_id, start, start + 60)
+
+    for url in DEFAULT_SOURCES:
+        direct_vm.mock_web(url.replace(".", r"\."), {"status": 200, "body": "{}"})
+    # Only matches if the pinned covered_service string was actually
+    # interpolated into the prompt — if the contract failed to thread it
+    # through, no mock matches and evaluation falls through to
+    # INCONCLUSIVE instead of RESOLVED_NO_BREACH.
+    direct_vm.mock_llm(
+        r".*Checkout API \(payments-eu-west\).*",
+        json.dumps({"usable": True, "breach_minutes": 0, "confidence": "high"}),
+    )
+
+    contract.evaluate_claim(claim_id)
+    assert contract.get_claim(claim_id)["status"] == "RESOLVED_NO_BREACH"
+
+
+def test_target_uptime_bps_materially_changes_settlement(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """
+    Regression test for a real soundness gap: target_uptime_bps used to be
+    stored but never actually used anywhere — grace_minutes was a fully
+    independent free-form input, so a provider/customer could agree to a
+    99.99% target while separately setting an enormous grace_minutes,
+    making the stated target purely decorative. grace_minutes is now
+    DERIVED from target_uptime_bps + term_seconds, so the same term length
+    with a stricter vs. laxer target must produce different derived grace
+    budgets and, for an identical agreed breach, different verdicts.
+    """
+    contract = direct_deploy("contracts/UptimeArbiter.py")
+
+    strict_id = propose_default_sla(
+        contract, direct_vm, direct_alice, direct_bob, target_uptime_bps=9999  # 99.99%
+    )
+    lenient_id = propose_default_sla(
+        contract, direct_vm, direct_alice, direct_bob, target_uptime_bps=9900  # 99%
+    )
+
+    strict_sla = contract.get_sla(strict_id)
+    lenient_sla = contract.get_sla(lenient_id)
+
+    # 30-day term = 43,200 minutes. 99.99% -> grace = 43200 * 0.0001 = 4.32 -> 4.
+    # 99% -> grace = 43200 * 0.01 = 432.
+    assert strict_sla["grace_minutes"] == 4
+    assert lenient_sla["grace_minutes"] == 432
+
+    strict_sla = activate_default_sla(contract, direct_vm, direct_alice, direct_bob, strict_id)
+    lenient_sla = activate_default_sla(contract, direct_vm, direct_alice, direct_bob, lenient_id)
+
+    start = int(strict_sla["term_start_ts"]) + 60
+    direct_vm.sender = direct_bob
+    strict_claim = contract.submit_claim(strict_id, start, start + 3600)
+    lenient_claim = contract.submit_claim(lenient_id, start, start + 3600)
+
+    # Both SLAs see the IDENTICAL agreed evidence: 60 minutes of downtime.
+    mock_all_sources_report(direct_vm, minutes=60)
+    contract.evaluate_claim(strict_claim)
+    direct_vm.clear_mocks()
+    mock_all_sources_report(direct_vm, minutes=60)
+    contract.evaluate_claim(lenient_claim)
+
+    strict_result = contract.get_claim(strict_claim)
+    lenient_result = contract.get_claim(lenient_claim)
+
+    # Strict target: 60 - 4 = 56 billable minutes -> a real payout.
+    assert strict_result["status"] in ("RESOLVED_BREACH", "RESOLVED_PARTIAL")
+    assert int(strict_result["payout_wei"]) > 0
+
+    # Lenient target: 60 minutes is fully inside the 432-minute grace budget.
+    assert lenient_result["status"] == "RESOLVED_NO_BREACH"
+    assert lenient_result["payout_wei"] == "0"
+
+
+def test_unusable_sources_excluded_from_quorum_not_counted_as_zero(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """
+    Regression test for a real soundness gap: a source the model could not
+    confidently attribute to the covered service (or read at all) used to
+    be coerced to "0 breach minutes" — indistinguishable from "confirmed no
+    incident" — which could let 2 unrelated/unusable sources plus 1 real
+    reading falsely reach majority quorum and resolve NO_BREACH, when only
+    a MINORITY of sources actually said anything usable. It must resolve
+    INCONCLUSIVE instead.
+    """
+    contract, sla_id, sla = _active_sla(direct_vm, direct_deploy, direct_alice, direct_bob)
+    start = int(sla["term_start_ts"]) + 60
+
+    direct_vm.sender = direct_bob
+    claim_id = contract.submit_claim(sla_id, start, start + 3600)
+
+    # 1 usable source (reports a real 30-minute incident) + 2 unusable
+    # (fetched fine, but content is unrelated / low-confidence). Required
+    # majority of 3 is 2 — only 1 source is actually usable, so this must
+    # NOT reach quorum, regardless of what number the unusable ones might
+    # otherwise have been coerced to.
+    mock_sources_mixed(
+        direct_vm,
+        usable_minutes={DEFAULT_SOURCES[0]: 30},
+        unusable_urls=[DEFAULT_SOURCES[1], DEFAULT_SOURCES[2]],
+    )
+
+    contract.evaluate_claim(claim_id)
+
+    claim = contract.get_claim(claim_id)
+    assert claim["status"] == "INCONCLUSIVE"
+    assert claim["inconclusive_reason"] != ""
+    assert claim["breach_minutes"] == 0
+    # SLA must be reopened for a new claim attempt, not stuck on a
+    # falsely-quorate result.
+    assert contract.get_sla(sla_id)["active_claim_id"] == ""
+
+
+def test_unusable_sources_still_reach_quorum_when_majority_is_usable(
+    direct_vm, direct_deploy, direct_alice, direct_bob
+):
+    """Complement to the test above: 2 usable + 1 unusable out of 3 DOES
+    meet the majority requirement, and the aggregate is computed only from
+    the 2 usable readings — the unusable one contributes nothing, not a 0."""
+    contract, sla_id, sla = _active_sla(direct_vm, direct_deploy, direct_alice, direct_bob)
+    start = int(sla["term_start_ts"]) + 60
+
+    direct_vm.sender = direct_bob
+    claim_id = contract.submit_claim(sla_id, start, start + 3600)
+
+    mock_sources_mixed(
+        direct_vm,
+        usable_minutes={DEFAULT_SOURCES[0]: 40, DEFAULT_SOURCES[1]: 40},
+        unusable_urls=[DEFAULT_SOURCES[2]],
+    )
+
+    contract.evaluate_claim(claim_id)
+
+    claim = contract.get_claim(claim_id)
+    assert claim["status"] in ("RESOLVED_BREACH", "RESOLVED_PARTIAL")
+    assert claim["breach_minutes"] == 40

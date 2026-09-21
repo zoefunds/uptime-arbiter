@@ -331,7 +331,7 @@ visible to a reviewer without them having to read this file or the
 contract source first — see the "Why this needs GenLayer, specifically"
 section there.
 
-## Contract test suite — `tests/direct/` (35 tests, all passing)
+## Contract test suite — `tests/direct/` (39 tests, all passing)
 Direct-mode tests via `genlayer-test` (the `gltest` pytest plugin), run in
 ~2.5s with no server. Needs Python 3.12+ (`genlayer-py` imports
 `collections.abc.Buffer`, added in 3.12 — a 3.11 interpreter fails at
@@ -439,6 +439,74 @@ which blocks shrinking below content size — a classic CSS gotcha, not
 specific to this stack). Fixed in the `Field` component in both
 `claims/[claimId]/page.tsx` and `registry/[slaId]/page.tsx`, verified
 visually post-fix.
+
+## Review-team "more info" fixes: target/service materiality, quorum bias, finalize soundness
+A review pass identified three real soundness gaps and asked for focused
+tests. All three fixed in the contract (not yet redeployed as of this
+writing — `propose_sla`'s signature changed, so this REQUIRES a redeploy
+before the frontend can register a new SLA against the live contract):
+
+1. **`target_uptime_bps` was stored but never used anywhere.**
+   `grace_minutes` was a fully independent free-form input to `propose_sla`
+   — a provider/customer could agree to a 99.99% target while separately
+   setting an enormous grace_minutes, making the stated target purely
+   decorative. Fixed by DERIVING `grace_minutes` on-chain from
+   `target_uptime_bps` and `term_seconds`
+   (`term_minutes × (1 − target) / 10000`) and removing it as a
+   `propose_sla` parameter entirely. Added `MIN_TARGET_UPTIME_BPS = 5000`
+   (50%) so a degenerate 0%-uptime "SLA" can't blow the derived grace past
+   `MAX_GRACE_MINUTES`.
+2. **No pinned service identity** — a shared status page covering several
+   services could have an incident about an unrelated service miscounted
+   against this SLA. Added `covered_service: str`, pinned at registration
+   like everything else, threaded into the evaluation prompt
+   (`_extract_breach_minutes_for_source`) so the model explicitly checks
+   relevance before counting anything.
+3. **Unrelated/low-confidence sources were coerced to "0 breach minutes"**
+   instead of excluded from the quorum — indistinguishable from "confirmed
+   no incident," systematically biasing every noisy/off-topic source
+   toward the provider. Fixed: the prompt now asks for a `usable: bool`
+   field, and `_coerce_breach_minutes` returns the `_INCONCLUSIVE_SENTINEL`
+   (same as unreachable) whenever `usable` is false or `confidence` is
+   `"low"` — these sources genuinely don't count toward the majority-quorum
+   requirement, they don't silently pass it with a wrong answer.
+4. **`finalize_claim` never concluded the SLA** — it zeroed
+   `escrow_deposited`/`bond_deposited` and cleared `active_claim_id`, but
+   left `status` at `ACTIVE`. That let a customer pin a *second* claim
+   against an SLA with zero GEN behind it at all; `evaluate_claim` would
+   still run to completion, but every payout is silently zero regardless of
+   the real verdict (`_compute_settlement` caps at `escrow_deposited`).
+   Fixed: `finalize_claim` now sets `sla.status = SLA_STATUS_CONCLUDED`,
+   so a second `submit_claim` correctly reverts with `"SLA is not ACTIVE"`.
+
+**4 new tests added** (39 total, all passing) directly covering each fix:
+`test_target_uptime_bps_materially_changes_settlement` (same term length,
+different targets → different derived grace → different verdicts for an
+identical agreed breach), `test_covered_service_is_passed_into_the_evaluation_prompt`,
+`test_unusable_sources_excluded_from_quorum_not_counted_as_zero` (1 usable
++ 2 unusable out of 3 must resolve INCONCLUSIVE, not falsely reach quorum),
+`test_unusable_sources_still_reach_quorum_when_majority_is_usable` (the
+complement — 2 usable + 1 unusable DOES reach quorum, computed only from
+the usable readings), and `test_finalize_concludes_the_sla_and_blocks_a_second_claim`
+(replaces the old, now-incorrect `test_cannot_reclaim_the_same_adjudicated_window_twice`,
+whose assumption — that the SLA stayed ACTIVE after finalize — was itself
+the bug).
+
+**Downstream changes required by the signature change** (a pattern worth
+remembering: any `propose_sla` change ripples to test fixtures, frontend,
+AND backend/indexer/API types, not just the contract):
+- `tests/direct/conftest.py`'s `propose_default_sla` helper — removed
+  `grace_minutes` kwarg, added `covered_service` (defaults match the
+  frontend's own sample data).
+- `frontend/src/app/register/page.tsx` — removed the Grace input, added a
+  Covered Service field, added a client-side derived-grace *preview*
+  (mirrors the contract's formula exactly, but the contract remains the
+  authoritative source — this is just so the user isn't surprised at
+  broadcast time).
+- `backend/prisma/schema.prisma` + `src/indexer/poll.ts` — added
+  `coveredService` column/mapping (new migration
+  `add_covered_service`), `frontend/src/lib/api.ts`'s `SlaRow` type, and
+  the SLA detail page display.
 
 ## Next phases
 The full lifecycle (propose → fund → activate → claim → evaluate →

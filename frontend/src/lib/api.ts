@@ -18,6 +18,7 @@ export interface SlaRow {
   provider: string;
   customer: string;
   label: string;
+  coveredService: string;
   targetUptimeBps: number;
   graceMinutes: number;
   penaltyRateWeiPerMin: string;

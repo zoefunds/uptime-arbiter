@@ -1,4 +1,5 @@
 import json
+import re
 
 GEN = 10**18
 CONTRACT = "contracts/UptimeArbiter.py"
@@ -35,18 +36,23 @@ def propose_default_sla(
     registration_ttl_seconds=7 * 86400,
     sources=None,
     exclusion_terms="",
-    grace_minutes=21,
     target_uptime_bps=9995,
     label="Test SLA",
+    covered_service="GitHub Actions Runner Fleet (us-east-1)",
 ):
     """Registers an SLA with sane defaults, matching the frontend's own
-    sample-fill values, so every test isn't re-deriving the same 13 args."""
+    sample-fill values, so every test isn't re-deriving the same args.
+
+    grace_minutes is DERIVED on-chain from target_uptime_bps + term_seconds
+    (see propose_sla) — it is deliberately not a parameter here. With the
+    defaults below (99.95% target, 30-day term) it works out to 21 minutes,
+    matching every test/UI sample that assumed a 21-minute grace."""
     vm.sender = provider
     return contract.propose_sla(
         hexaddr(customer),
         label,
+        covered_service,
         target_uptime_bps,
-        grace_minutes,
         str(penalty_rate_wei_per_min),
         str(escrow_wei),
         str(bond_wei),
@@ -89,3 +95,36 @@ def mock_all_sources_report(vm, minutes: int, sources=None):
 def re_escape_ish(url: str) -> str:
     import re
     return re.escape(url)
+
+
+def mock_sources_mixed(vm, usable_minutes: dict, unusable_urls=None):
+    """
+    Mocks a source-by-source mix: `usable_minutes` maps url -> breach
+    minutes for sources that should count toward the quorum; `unusable_urls`
+    lists sources whose content is fetched successfully but whose LLM
+    response is `usable: false` (content unrelated to the covered service,
+    or otherwise not confidently attributable) — these must be excluded
+    from the aggregate, never coerced to a "confirmed 0" reading.
+
+    The LLM mock's prompt-pattern match has to key off something in the
+    fetched body (the prompt embeds "RAW SOURCE CONTENT" verbatim, never
+    the URL itself) — so each web mock body carries a unique per-source
+    marker, and the matching LLM mock regexes on that marker.
+    """
+    for url, minutes in usable_minutes.items():
+        marker = f"marker-usable-{abs(hash(url)) % 100000}"
+        vm.mock_web(re_escape_ish(url), {"status": 200, "body": json.dumps({"marker": marker, "status": "ok"})})
+        vm.mock_llm(
+            re.escape(marker),
+            json.dumps({"usable": True, "breach_minutes": minutes, "confidence": "high"}),
+        )
+    for url in unusable_urls or []:
+        marker = f"marker-unusable-{abs(hash(url)) % 100000}"
+        vm.mock_web(
+            re_escape_ish(url),
+            {"status": 200, "body": json.dumps({"marker": marker, "status": "unrelated-service"})},
+        )
+        vm.mock_llm(
+            re.escape(marker),
+            json.dumps({"usable": False, "breach_minutes": 0, "confidence": "low"}),
+        )

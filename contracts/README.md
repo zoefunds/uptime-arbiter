@@ -31,7 +31,7 @@ All three must pass clean. See `tests/README.md` for the direct-mode test suite.
 
 | Method | Params | Payable | Caller | Notes |
 |---|---|---|---|---|
-| `propose_sla` | `customer, label, target_uptime_bps, grace_minutes, penalty_rate_wei_per_min, escrow_wei, bond_wei, challenge_bond_wei, tolerance_minutes, challenge_window_seconds, term_seconds, registration_ttl_seconds, evidence_sources, exclusion_terms` | No | anyone (becomes provider) | Pins terms + evidence sources + exclusion terms. Returns the new `sla_id`. No funds move. |
+| `propose_sla` | `customer, label, covered_service, target_uptime_bps, penalty_rate_wei_per_min, escrow_wei, bond_wei, challenge_bond_wei, tolerance_minutes, challenge_window_seconds, term_seconds, registration_ttl_seconds, evidence_sources, exclusion_terms` | No | anyone (becomes provider) | Pins terms + evidence sources + exclusion terms + the covered-service identity. `grace_minutes` is NOT a parameter — it's derived on-chain as `term_minutes × (1 − target_uptime_bps)`, so the stated uptime target always materially affects settlement (see `MATERIAL EFFECT OF target_uptime_bps` in the contract). Returns the new `sla_id`. No funds move. |
 | `lock_provider_escrow` | `sla_id` | Yes — exact `escrow_wei` | the proposing provider | First of two funding calls. |
 | `co_sign_and_lock_bond` | `sla_id, expected_source_digest` | Yes — exact `bond_wei` (or 0) | the named customer | `expected_source_digest` must match `get_sla(sla_id).source_digest` exactly, or it reverts — this is the customer's confirmation they're approving the exact pinned source list. SLA goes `ACTIVE` once both funding calls have landed, in either order. |
 | `cancel_sla` | `sla_id` | No | provider or customer | Only while `PROPOSED`. Refunds whichever side already deposited. |
@@ -60,9 +60,9 @@ All three must pass clean. See `tests/README.md` for the direct-mode test suite.
 ## `get_sla` fields
 
 ```
-sla_id, provider, customer, label, target_uptime_bps, grace_minutes,
-penalty_rate_wei_per_min, escrow_wei, escrow_deposited, bond_wei,
-bond_deposited, challenge_bond_wei, tolerance_minutes,
+sla_id, provider, customer, label, covered_service, target_uptime_bps,
+grace_minutes, penalty_rate_wei_per_min, escrow_wei, escrow_deposited,
+bond_wei, bond_deposited, challenge_bond_wei, tolerance_minutes,
 challenge_window_seconds, term_seconds, evidence_sources, exclusion_terms,
 source_digest, adjudicated_windows, status, provider_funded,
 customer_signed, created_at, registration_deadline_ts, term_start_ts,
@@ -71,7 +71,12 @@ term_end_ts, active_claim_id
 
 `*_wei` fields are the agreed **terms**; `*_deposited` fields are the
 actual **ledger** — settlement logic only ever reads the latter. `status`
-is one of `PROPOSED / ACTIVE / CONCLUDED / CANCELLED`.
+is one of `PROPOSED / ACTIVE / CONCLUDED / CANCELLED` — note that
+`finalize_claim` always transitions an `ACTIVE` SLA to `CONCLUDED`; a
+settled claim consumes the SLA's escrow relationship rather than leaving
+it `ACTIVE` with a zeroed ledger (which would let a second, unfunded claim
+be pinned). `grace_minutes` is derived, not user-supplied — see
+`propose_sla` above.
 
 ## `get_claim` fields
 
@@ -102,6 +107,8 @@ INCONCLUSIVE_RETRY`.
 | Bound | Value |
 |---|---|
 | Evidence sources per SLA | 3–8 |
+| Covered service identifier length | 1–200 characters |
+| Target uptime | 50%–100% (5,000–10,000 bps) |
 | Equivalence tolerance | 0–30 minutes |
 | Challenge window | 24h – 14 days |
 | SLA term length | 1 day – ~1 year |

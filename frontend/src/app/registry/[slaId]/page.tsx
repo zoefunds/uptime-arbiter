@@ -96,8 +96,9 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
             <div className="grid grid-cols-2 gap-4 font-mono text-sm md:grid-cols-3">
               <Field label="Provider" value={shortAddress(sla.provider)} />
               <Field label="Customer" value={shortAddress(sla.customer)} />
+              <Field label="Covered Service" value={sla.coveredService || "—"} />
               <Field label="Target Uptime" value={`${(sla.targetUptimeBps / 100).toFixed(2)}%`} />
-              <Field label="Grace" value={`${sla.graceMinutes} min`} />
+              <Field label="Grace (derived)" value={`${sla.graceMinutes} min`} />
               <Field label="Penalty Rate" value={`${formatGen(sla.penaltyRateWeiPerMin)} GEN/min`} />
               <Field label="Tolerance" value={`± ${sla.toleranceMinutes} min`} />
               <Field label="Challenge Window" value={`${(sla.challengeWindowSeconds / 3600).toFixed(0)}h`} />

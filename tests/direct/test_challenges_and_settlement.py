@@ -170,14 +170,29 @@ def test_cannot_finalize_the_same_claim_twice(direct_vm, direct_deploy, direct_a
         contract.finalize_claim(claim_id)
 
 
-def test_cannot_reclaim_the_same_adjudicated_window_twice(direct_vm, direct_deploy, direct_alice, direct_bob):
+def test_finalize_concludes_the_sla_and_blocks_a_second_claim(direct_vm, direct_deploy, direct_alice, direct_bob):
+    """
+    Regression test for a real soundness gap: finalize_claim used to zero
+    the escrow/bond ledger and clear active_claim_id WITHOUT ever
+    transitioning sla.status away from ACTIVE. That let a customer pin a
+    second claim against an SLA with zero GEN behind it — evaluate_claim
+    and finalize_claim would still run to completion, but every payout is
+    silently zero regardless of the real verdict (_compute_settlement caps
+    at escrow_deposited), which is not a meaningful state for the protocol
+    to reach. finalize_claim must conclude the SLA.
+    """
     contract, sla_id, claim_id, sla = _resolved_no_breach_claim(direct_vm, direct_deploy, direct_alice, direct_bob)
     direct_vm.warp("2099-01-01T00:00:00Z")
     contract.finalize_claim(claim_id)
 
-    start = int(sla["term_start_ts"]) + 60  # same window as the finalized claim
+    concluded = contract.get_sla(sla_id)
+    assert concluded["status"] == "CONCLUDED"
+    assert concluded["escrow_deposited"] == "0"
+    assert concluded["bond_deposited"] == "0"
+
+    start = int(sla["term_start_ts"]) + 120  # a fresh, non-overlapping window
     direct_vm.sender = direct_bob
-    with direct_vm.expect_revert("overlaps a window already adjudicated"):
+    with direct_vm.expect_revert("SLA is not ACTIVE"):
         contract.submit_claim(sla_id, start, start + 60)
 
 

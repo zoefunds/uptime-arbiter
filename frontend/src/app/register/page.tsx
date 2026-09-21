@@ -20,8 +20,8 @@ const SAMPLE_SOURCES = [
 
 const SAMPLE_VALUES = {
   label: "GitHub Actions Runner Fleet (us-east-1)",
+  coveredService: "GitHub Actions hosted runners (us-east-1)",
   targetUptimePct: "99.95",
-  graceMinutes: "21",
   penaltyRate: "250",
   escrow: "50000",
   bond: "5000",
@@ -41,8 +41,8 @@ export default function RegisterSlaPage() {
 
   const [customer, setCustomer] = useState("");
   const [label, setLabel] = useState("");
+  const [coveredService, setCoveredService] = useState("");
   const [targetUptimePct, setTargetUptimePct] = useState("99.95");
-  const [graceMinutes, setGraceMinutes] = useState("21");
   const [penaltyRate, setPenaltyRate] = useState("250");
   const [escrow, setEscrow] = useState("50000");
   const [bond, setBond] = useState("5000");
@@ -55,6 +55,17 @@ export default function RegisterSlaPage() {
   const [exclusionTerms, setExclusionTerms] = useState("");
   const [done, setDone] = useState(false);
 
+  // Mirrors the contract's own derivation exactly (propose_sla):
+  // grace_minutes = term_minutes * (10000 - target_uptime_bps) // 10000.
+  // Purely a UI preview — the contract computes the authoritative value
+  // itself; this just avoids surprising the user at broadcast time.
+  const targetBps = Math.round(Number(targetUptimePct) * 100);
+  const termMinutes = Math.floor((Number(termDays) || 0) * DAY / 60);
+  const derivedGraceMinutes =
+    Number.isFinite(targetBps) && targetBps >= 0 && targetBps <= 10_000
+      ? Math.floor((termMinutes * (10_000 - targetBps)) / 10_000)
+      : 0;
+
   function updateSource(i: number, value: string) {
     setSources((prev) => prev.map((s, idx) => (idx === i ? value : s)));
   }
@@ -65,8 +76,8 @@ export default function RegisterSlaPage() {
 
   function fillSampleData() {
     setLabel(SAMPLE_VALUES.label);
+    setCoveredService(SAMPLE_VALUES.coveredService);
     setTargetUptimePct(SAMPLE_VALUES.targetUptimePct);
-    setGraceMinutes(SAMPLE_VALUES.graceMinutes);
     setPenaltyRate(SAMPLE_VALUES.penaltyRate);
     setEscrow(SAMPLE_VALUES.escrow);
     setBond(SAMPLE_VALUES.bond);
@@ -89,12 +100,16 @@ export default function RegisterSlaPage() {
       alert("Customer address is required.");
       return;
     }
+    if (!coveredService.trim()) {
+      alert("Covered service is required — validators use it to reject incidents about a different service.");
+      return;
+    }
 
     const txId = await send("propose_sla", [
       customer,
       label || "Unlabeled SLA",
+      coveredService.trim(),
       Math.round(Number(targetUptimePct) * 100),
-      Number(graceMinutes),
       genToWei(penaltyRate).toString(),
       genToWei(escrow).toString(),
       genToWei(bond).toString(),
@@ -164,6 +179,12 @@ export default function RegisterSlaPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <TextField label="Customer Address" value={customer} onChange={setCustomer} placeholder="0x..." />
           <TextField label="SLA Label" value={label} onChange={setLabel} placeholder="AWS us-east-1 RPC Cluster" />
+          <TextField
+            label="Covered Service"
+            value={coveredService}
+            onChange={setCoveredService}
+            placeholder="e.g. Checkout API (payments-eu-west)"
+          />
           <NumField label="Provider Escrow (GEN)" value={escrow} onChange={setEscrow} />
           <NumField label="Customer Bond (GEN)" value={bond} onChange={setBond} />
           <NumField label="Challenge Bond (GEN)" value={challengeBond} onChange={setChallengeBond} />
@@ -175,12 +196,23 @@ export default function RegisterSlaPage() {
         <h2 className="mb-4 font-display text-lg font-semibold text-on-surface">2. SLA Parameters</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <NumField label="Target Uptime (%)" value={targetUptimePct} onChange={setTargetUptimePct} step="0.01" />
-          <NumField label="Grace (minutes)" value={graceMinutes} onChange={setGraceMinutes} />
           <NumField label="Equivalence Tolerance (minutes)" value={tolerance} onChange={setTolerance} />
           <NumField label="Challenge Window (hours)" value={challengeWindowHours} onChange={setChallengeWindowHours} />
           <NumField label="SLA Term (days)" value={termDays} onChange={setTermDays} />
           <NumField label="Registration Deadline (days)" value={registrationTtlDays} onChange={setRegistrationTtlDays} />
+          <div className="flex flex-col gap-1">
+            <span className="font-mono text-[10px] uppercase text-on-surface-variant">Derived Grace Budget</span>
+            <span className="rounded bg-surface-container-lowest px-3 py-2 font-mono text-sm text-secondary">
+              {derivedGraceMinutes} min over the term
+            </span>
+          </div>
         </div>
+        <p className="mt-3 text-xs text-on-surface-variant">
+          Grace is not a separate input — the contract derives it on-chain from Target Uptime and
+          SLA Term (<code>term_minutes × (1 − target)</code>), so the stated uptime target always
+          materially affects settlement instead of being decorative next to an independently-set
+          grace value.
+        </p>
       </Card>
 
       <Card>

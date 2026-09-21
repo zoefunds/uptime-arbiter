@@ -116,6 +116,16 @@ MAX_CHALLENGE_ROUNDS_PER_CLAIM = 2
 BPS_DENOMINATOR = 10_000
 MAX_SOURCE_URL_LENGTH = 512
 MAX_LABEL_LENGTH = 160
+MIN_COVERED_SERVICE_LENGTH = 1
+MAX_COVERED_SERVICE_LENGTH = 200
+
+# target_uptime_bps now DRIVES grace_minutes (see propose_sla) rather than
+# grace_minutes being an independent, disconnected input — see
+# "MATERIAL EFFECT OF target_uptime_bps" below for why a free-form
+# grace_minutes was a soundness gap. MIN_TARGET_UPTIME_BPS keeps the
+# derived grace budget from blowing past MAX_GRACE_MINUTES on a long term
+# with a very lax target (a 0%-uptime "SLA" is not a meaningful agreement).
+MIN_TARGET_UPTIME_BPS = 5_000  # 50% floor — anything lower isn't a real uptime commitment
 MAX_RATIONALE_LENGTH = 2_000
 MAX_EXCLUSION_TERMS_LENGTH = 2_000
 MAX_FETCH_BODY_CHARS = 6_000  # prompt-size guard when feeding fetched pages to the LLM
@@ -132,9 +142,13 @@ class SLAAgreement:
     provider: Address
     customer: Address
     label: str
+    covered_service: str  # pinned identity of the monitored service — threaded into
+                            # the evaluation prompt so a status page covering several
+                            # services can't have an unrelated incident miscounted
 
     target_uptime_bps: u256
-    grace_minutes: u256
+    grace_minutes: u256    # DERIVED from target_uptime_bps + term_seconds at
+                            # propose_sla time, not a free-form input — see propose_sla
     penalty_rate_wei_per_min: u256
 
     escrow_wei: u256            # agreed term
@@ -331,9 +345,26 @@ def _coerce_breach_minutes(data: dict, window_minutes: int) -> int:
     one node cannot blow up the equivalence comparison — both leader and
     validator apply the same clamp, so the clamp itself never causes a
     disagreement, it only prevents absurd values from being *stored*.
+
+    CRITICAL: a source the model could not confidently attribute to the
+    pinned `covered_service`, or could not confidently read at all, must
+    return the INCONCLUSIVE sentinel here — NOT zero. An unrelated or
+    low-confidence result silently coerced to "0 breach minutes" is
+    indistinguishable from "confirmed no incident", which systematically
+    biases every claim toward the provider whenever a source is noisy,
+    off-topic, or ambiguous. Excluding it from the quorum instead means
+    the aggregate is only ever computed from sources that actually said
+    something usable about the covered service.
     """
     if not isinstance(data, dict):
         raise ValueError("non-dict LLM response")
+
+    usable = data.get("usable", True)
+    if isinstance(usable, str):
+        usable = usable.strip().lower() not in ("false", "no", "0")
+    confidence = str(data.get("confidence", "high")).strip().lower()
+    if not usable or confidence == "low":
+        return _INCONCLUSIVE_SENTINEL
 
     raw = data.get("breach_minutes")
     if raw is None:
@@ -411,20 +442,27 @@ def _extract_breach_minutes_for_source(
     window_end_iso: str,
     window_minutes: int,
     exclusion_terms: str,
+    covered_service: str,
 ) -> int:
     """
     Fetch one pinned source and ask the model to compute how many minutes of
     downtime it independently reports inside the claimed window. Returns
-    _INCONCLUSIVE_SENTINEL (-1) if the source is unreachable or the model's
-    answer cannot be reliably parsed — this source is then excluded from the
-    aggregate rather than allowed to poison it.
+    _INCONCLUSIVE_SENTINEL (-1) if the source is unreachable, the content is
+    unrelated to the pinned `covered_service`, the model's confidence is
+    low, or the answer cannot be reliably parsed — in every one of those
+    cases the source is excluded from the aggregate, never coerced to a
+    "confirmed zero downtime" answer (see `_coerce_breach_minutes`).
 
-    `exclusion_terms` (set once at SLA registration, pinned like everything
-    else) is what makes this task genuinely interpretive rather than a
-    number a deterministic script could pull out of a JSON field: the model
-    has to read the incident's own description and judge whether it falls
-    under a natural-language carve-out (e.g. "pre-announced maintenance
-    windows ≥24h in advance do not count"), not just count minutes.
+    `covered_service` (pinned at registration, immutable) is what makes
+    "unrelated" a real, checkable condition rather than a vague escape
+    hatch: a shared status page listing several services can't have an
+    incident about a DIFFERENT service silently miscounted against this
+    SLA. `exclusion_terms` (also pinned) is what makes this task genuinely
+    interpretive rather than a number a deterministic script could pull out
+    of a JSON field: the model has to read the incident's own description
+    and judge whether it falls under a natural-language carve-out (e.g.
+    "pre-announced maintenance windows ≥24h in advance do not count"), not
+    just count minutes.
     """
     try:
         content = _fetch_source_text(url)
@@ -450,8 +488,10 @@ assume an exclusion applies just because it would benefit either party.
     )
 
     prompt = f"""You are computing service downtime from a single raw status/telemetry
-source for an onchain SLA dispute. Be precise and conservative.
+source for an onchain SLA dispute. Be precise, conservative, and honest about
+uncertainty — an SLA payout depends on your answer.
 
+COVERED SERVICE (the ONLY service this SLA is about): {covered_service}
 CLAIMED WINDOW (UTC): {window_start_iso} to {window_end_iso}
 This window is exactly {window_minutes} minutes long.
 {exclusion_block}
@@ -460,15 +500,21 @@ RAW SOURCE CONTENT (JSON, RSS, HTML, or plain text — format varies by source):
 {truncated}
 ---
 
-Determine how many minutes of the CLAIMED WINDOW show the monitored service as
-down, degraded past its stated SLA threshold, or reporting an active incident
-that is NOT excluded per the terms above, based ONLY on the content above. If
-the content contains no evidence of a non-excluded incident overlapping the
-window, answer 0. If the content is unrelated, empty, or does not let you
-determine downtime for this window, answer 0 and set confidence to "low".
+Step 1 — RELEVANCE: does this content actually describe the status of
+"{covered_service}" specifically (not a different service that happens to
+share the same status page)? If the content is empty, unrelated to
+"{covered_service}", or otherwise does not let you confidently determine
+that service's downtime for this exact window, set "usable" to false,
+"confidence" to "low", and "breach_minutes" to 0 — do NOT guess a number
+and do NOT treat missing evidence as proof of zero downtime.
+
+Step 2 — ONLY if usable is true: determine how many minutes of the CLAIMED
+WINDOW show "{covered_service}" down, degraded past its stated SLA
+threshold, or reporting an active incident that is NOT excluded per the
+terms above.
 
 Respond with strict JSON only, no prose:
-{{"breach_minutes": <integer 0 to {window_minutes}>, "confidence": "high" | "medium" | "low", "excluded": true | false}}"""
+{{"usable": true | false, "breach_minutes": <integer 0 to {window_minutes}>, "confidence": "high" | "medium" | "low", "excluded": true | false}}"""
 
     try:
         raw_response = gl.nondet.exec_prompt(prompt, response_format="json")
@@ -487,6 +533,7 @@ def _collect_breach_minutes(
     window_start_ts: int,
     window_end_ts: int,
     exclusion_terms: str,
+    covered_service: str,
 ) -> dict:
     """
     Runs the full independent-evidence pipeline over every pinned source and
@@ -505,7 +552,7 @@ def _collect_breach_minutes(
     per_source = []
     for url in sources:
         minutes = _extract_breach_minutes_for_source(
-            url, window_start_iso, window_end_iso, window_minutes, exclusion_terms
+            url, window_start_iso, window_end_iso, window_minutes, exclusion_terms, covered_service
         )
         per_source.append(minutes)
 
@@ -556,6 +603,7 @@ def _run_breach_consensus(
     window_end_ts: int,
     tolerance_minutes: int,
     exclusion_terms: str,
+    covered_service: str,
 ) -> dict:
     """
     Runs the leader/validator consensus round for a claim (or a challenge
@@ -573,7 +621,7 @@ def _run_breach_consensus(
     """
 
     def leader_fn() -> dict:
-        return _collect_breach_minutes(sources, window_start_ts, window_end_ts, exclusion_terms)
+        return _collect_breach_minutes(sources, window_start_ts, window_end_ts, exclusion_terms, covered_service)
 
     def validator_fn(leader_result) -> bool:
         if not isinstance(leader_result, gl.vm.Return):
@@ -798,8 +846,8 @@ class UptimeArbiter(gl.Contract):
         self,
         customer: str,
         label: str,
+        covered_service: str,
         target_uptime_bps: int,
-        grace_minutes: int,
         penalty_rate_wei_per_min: str,
         escrow_wei: str,
         bond_wei: str,
@@ -821,8 +869,14 @@ class UptimeArbiter(gl.Contract):
         customer_addr = Address(customer)
         _require(str(provider) != str(customer_addr), "Provider and customer must differ")
         _require(0 < len(label) <= MAX_LABEL_LENGTH, "Invalid label length")
-        _require(0 <= target_uptime_bps <= BPS_DENOMINATOR, "target_uptime_bps out of range")
-        _require(0 <= grace_minutes <= MAX_GRACE_MINUTES, "grace_minutes out of range")
+        _require(
+            MIN_COVERED_SERVICE_LENGTH <= len(covered_service) <= MAX_COVERED_SERVICE_LENGTH,
+            "covered_service must be a non-empty identifier of the monitored service",
+        )
+        _require(
+            MIN_TARGET_UPTIME_BPS <= target_uptime_bps <= BPS_DENOMINATOR,
+            f"target_uptime_bps must be between {MIN_TARGET_UPTIME_BPS} and {BPS_DENOMINATOR}",
+        )
 
         penalty_rate = u256(int(penalty_rate_wei_per_min))
         _require(
@@ -852,6 +906,23 @@ class UptimeArbiter(gl.Contract):
             "challenge_window_seconds out of range",
         )
         _require(MIN_TERM_SECONDS <= term_seconds <= MAX_TERM_SECONDS, "term_seconds out of range")
+
+        # MATERIAL EFFECT OF target_uptime_bps: grace_minutes is DERIVED here,
+        # deterministically, from the agreed uptime target and term length —
+        # it is deliberately not a separate free-form input. Before this fix
+        # a caller could set target_uptime_bps to 99.99% while independently
+        # setting a huge grace_minutes, making the stated target purely
+        # decorative and letting real breaches slide under an unrelated
+        # grace budget. grace_minutes = term_minutes * (1 - target), the
+        # standard SLA-industry definition of an uptime target's allowed
+        # downtime budget over the term.
+        term_minutes = term_seconds // 60
+        grace_minutes = (term_minutes * (BPS_DENOMINATOR - target_uptime_bps)) // BPS_DENOMINATOR
+        _require(
+            grace_minutes <= MAX_GRACE_MINUTES,
+            f"derived grace_minutes ({grace_minutes}) exceeds protocol maximum "
+            f"({MAX_GRACE_MINUTES}) — raise target_uptime_bps or shorten term_seconds",
+        )
         _require(
             MIN_REGISTRATION_TTL_SECONDS <= registration_ttl_seconds <= MAX_REGISTRATION_TTL_SECONDS,
             "registration_ttl_seconds out of range",
@@ -879,6 +950,7 @@ class UptimeArbiter(gl.Contract):
             provider=provider,
             customer=customer_addr,
             label=label,
+            covered_service=covered_service,
             target_uptime_bps=u256(target_uptime_bps),
             grace_minutes=u256(grace_minutes),
             penalty_rate_wei_per_min=penalty_rate,
@@ -1104,6 +1176,7 @@ class UptimeArbiter(gl.Contract):
             int(claim.window_end_ts),
             int(sla.tolerance_minutes),
             sla.exclusion_terms,
+            sla.covered_service,
         )
 
         if consensus["inconclusive"]:
@@ -1219,6 +1292,7 @@ class UptimeArbiter(gl.Contract):
             int(claim.window_end_ts),
             int(sla.tolerance_minutes),
             sla.exclusion_terms,
+            sla.covered_service,
         )
 
         challenger = challenge.challenger
@@ -1308,6 +1382,18 @@ class UptimeArbiter(gl.Contract):
         sla.bond_deposited = u256(0)
         sla.active_claim_id = ""
         sla.adjudicated_windows.append(_window_label(int(claim.window_start_ts), int(claim.window_end_ts)))
+        # Finalizing a claim CONCLUDES the SLA. Without this, the SLA stayed
+        # ACTIVE with escrow_deposited/bond_deposited at zero — active_claim_id
+        # was cleared so submit_claim's guard would pass, letting the
+        # customer pin a second claim against an SLA with no funds behind
+        # it at all: evaluate_claim/finalize_claim would still run, but
+        # every payout is silently zero regardless of the real verdict,
+        # since _compute_settlement caps at escrow_deposited. That is not a
+        # meaningful state for the protocol to be in. Concluding here is the
+        # simplest sound fix: a settled claim consumes the SLA's escrow
+        # relationship. A provider/customer who want to keep working
+        # together after a settled claim register a fresh SLA.
+        sla.status = SLA_STATUS_CONCLUDED
         self.slas[sla.sla_id] = sla
 
         claim.finalized = True
@@ -1390,6 +1476,7 @@ class UptimeArbiter(gl.Contract):
             "provider": str(sla.provider),
             "customer": str(sla.customer),
             "label": sla.label,
+            "covered_service": sla.covered_service,
             "target_uptime_bps": int(sla.target_uptime_bps),
             "grace_minutes": int(sla.grace_minutes),
             "penalty_rate_wei_per_min": str(sla.penalty_rate_wei_per_min),

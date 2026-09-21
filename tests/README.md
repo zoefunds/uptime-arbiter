@@ -1,6 +1,6 @@
 # Uptime Arbiter — Contract Tests
 
-Direct-mode tests for `contracts/UptimeArbiter.py` — fast (~2.5s for all 35),
+Direct-mode tests for `contracts/UptimeArbiter.py` — fast (~2.5s for all 39),
 in-memory, no GenVM server or Docker required.
 
 ## Setup (one-time)
@@ -28,16 +28,22 @@ python3.12 -m venv .venv-tests
 - **`test_claims_and_evaluation.py`** — claim submission access control and
   window validation, the settlement math (no-breach / partial / capped-at-
   escrow), the majority-quorum `INCONCLUSIVE` path when sources are
-  unreachable, and — the test backing the GenLayer Fit argument in the
-  root `README.md` — that `exclusion_terms` actually reaches the LLM prompt
-  (asserted via an LLM mock that only matches if the pinned exclusion text
-  was interpolated correctly).
+  unreachable, that `exclusion_terms` and `covered_service` both actually
+  reach the LLM prompt (asserted via an LLM mock that only matches if the
+  pinned text was interpolated correctly), that `target_uptime_bps`
+  materially changes the derived grace budget and therefore the verdict for
+  an identical agreed breach, and that a source the model marks `usable:
+  false` (unrelated/low-confidence) is excluded from the quorum rather than
+  coerced to "0 breach minutes" — with a complementary test proving a
+  majority-usable quorum still resolves correctly, computed only from the
+  usable readings.
 - **`test_challenges_and_settlement.py`** — challenge access control and
   bond enforcement, both challenge outcomes (`UPHELD_ORIGINAL` slashes the
   challenger, `OVERTURNED` recomputes settlement and refunds them),
-  finalize's fund-movement correctness and idempotency, double-claim /
-  double-adjudication protection, and — the load-bearing test for Contract
-  Quality — a direct proof that the Equivalence Principle validator
+  finalize's fund-movement correctness and idempotency, that `finalize_claim`
+  concludes the SLA and a second claim correctly reverts with `"SLA is not
+  ACTIVE"`, double-adjudication protection, and — the load-bearing test for
+  Contract Quality — a direct proof that the Equivalence Principle validator
   actually **re-derives** the answer and rejects disagreement beyond
   tolerance, using `direct_vm.run_validator()` to independently re-run the
   captured validator function under different mocked evidence than the

@@ -45,9 +45,11 @@ This is the section most reviewers check first. It's grounded directly in the co
 - `submit_claim()` immediately snapshots the claimed window and a digest of the evidence-source list, before any validator evaluation begins.
 - Every validator independently fetches every pinned source itself. No claimant-supplied payload, screenshot, or pre-fetched blob is ever trusted as evidence.
 - The Equivalence Principle compares a **computed number** (aggregate breach-minutes), never raw text, booleans, or JSON shape.
-- Disagreement beyond tolerance, or too few reachable sources, resolves to an explicit `INCONCLUSIVE` state — never a silently-picked value and never a default "no breach."
+- Disagreement beyond tolerance, too few reachable sources, or too few sources the model could confidently attribute to the pinned `covered_service`, resolves to an explicit `INCONCLUSIVE` state — never a silently-picked value and never a default "no breach." A source that's unreachable, unrelated, or low-confidence is *excluded from the quorum entirely*; it is never coerced to "0 breach minutes," which would otherwise be indistinguishable from "confirmed no incident" and systematically bias every noisy or off-topic source toward the provider.
+- `target_uptime_bps` materially drives settlement: `grace_minutes` is derived on-chain from the agreed target and term length (`term_minutes × (1 − target)`), not an independent free-form input — so a stated 99.99% target can't be paired with an unrelated, arbitrarily generous grace budget.
 - The nondeterministic step outputs *only* breach-minutes. `_compute_settlement()` is a separate, fully deterministic function that turns breach-minutes into a GEN payout. No validator or LLM ever touches monetary math.
 - `file_challenge()` can only *add* named evidence sources — it can never replace or remove the original pinned set. Funds are not withdrawable until the challenge window closes with no pending challenge.
+- Finalizing a claim concludes the SLA (`status -> CONCLUDED`) — it can never be left `ACTIVE` with a zeroed escrow ledger, which would otherwise let a second claim be pinned against an SLA with no funds behind it at all.
 
 ## Architecture
 

@@ -72,6 +72,7 @@ async function upsertSla(slaId: string): Promise<void> {
       provider: toStr(sla.provider),
       customer: toStr(sla.customer),
       label: toStr(sla.label),
+      coveredService: toStr(sla.covered_service),
       targetUptimeBps: Number(sla.target_uptime_bps ?? 0),
       graceMinutes: Number(sla.grace_minutes ?? 0),
       penaltyRateWeiPerMin: toStr(sla.penalty_rate_wei_per_min),

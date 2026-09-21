@@ -55,6 +55,7 @@ model SlaAgreement {
   provider              String
   customer              String
   label                 String
+  coveredService        String   @default("")
   targetUptimeBps        Int
   graceMinutes           Int
   penaltyRateWeiPerMin   String
