@@ -10,9 +10,11 @@ Every parameter/return type below is extracted directly from the current
 file via `genvm-lint schema contracts/UptimeArbiter.py`, not hand-typed —
 run that command yourself if this ever needs re-verifying after an edit.
 
-**Deployed at**: `0x8aB7b78e29D9af2b66A7B01E1D41E56Fb6595614` on GenLayer
+**Deployed at**: `0x61D6F3bdf53118523572a141F7E1904591147F94` on GenLayer
 StudioNet (chain id `61999`). See root `MEMORY.md` for the deployment
-history — two earlier addresses are dead and must never be referenced.
+history — earlier addresses (`0x6bd7064ECc72704D156FF5D34B2C7C3fEf9946c6`,
+`0xdeBf80793BD1145B9D195eeD311a01Ba25Eb09d1`, `0x8aB7b78e29D9af2b66A7B01E1D41E56Fb6595614`)
+are dead and must never be referenced.
 
 ## Verifying before you deploy
 

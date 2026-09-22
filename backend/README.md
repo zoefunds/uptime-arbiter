@@ -7,7 +7,7 @@ header comment in `prisma/schema.prisma` and `src/genlayer/client.ts`.
 **Currently live**:
 - API: https://uptime-arbiter-api.fly.dev (`fly.io` app `uptime-arbiter-api`)
 - Postgres: Fly Postgres app `uptime-arbiter-db`
-- Contract tracked: `0x8aB7b78e29D9af2b66A7B01E1D41E56Fb6595614` on GenLayer StudioNet
+- Contract tracked: `0x61D6F3bdf53118523572a141F7E1904591147F94` on GenLayer StudioNet
 
 ## Local development
 

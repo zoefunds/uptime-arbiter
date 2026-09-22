@@ -4,7 +4,7 @@ Next.js 16 (App Router, Turbopack), Tailwind v4, wagmi + Reown AppKit for
 wallet connect, genlayer-js for direct browser-to-contract reads/writes.
 
 **Currently live**: https://uptime-arbiter.vercel.app (Vercel project
-`uptime-arbiter`), tracking contract `0x8aB7b78e29D9af2b66A7B01E1D41E56Fb6595614`
+`uptime-arbiter`), tracking contract `0x61D6F3bdf53118523572a141F7E1904591147F94`
 on GenLayer StudioNet via backend `https://uptime-arbiter-api.fly.dev`.
 
 ## Trust boundary

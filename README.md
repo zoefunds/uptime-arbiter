@@ -7,7 +7,7 @@ Uptime Arbiter is an onchain SLA-breach adjudication protocol for infrastructure
 It is not a traditional escrow platform, a prediction market, a generic dispute-resolution app, or a frontend shell around a smart contract. The core primitive is: **a financially backed SLA whose breach determination depends on whether independently-fetched, precommitted public evidence sources show downtime exceeding a contractual threshold in a claimed time window.**
 
 - **Live app**: https://uptime-arbiter.vercel.app
-- **Contract**: `0x8aB7b78e29D9af2b66A7B01E1D41E56Fb6595614` on GenLayer StudioNet
+- **Contract**: `0x61D6F3bdf53118523572a141F7E1904591147F94` on GenLayer StudioNet
 - **Backend**: https://uptime-arbiter-api.fly.dev
 
 ---
@@ -78,7 +78,7 @@ The backend is a pure read cache. It never makes a breach determination, never p
 ## Repository layout
 
 - [`contracts/UptimeArbiter.py`](contracts/UptimeArbiter.py) — the single Intelligent Contract. `_run_breach_consensus` and `_compute_settlement` are the two functions to read first for the trust-boundary and escrow-discipline mechanics described above. Full method-by-method interface reference: [`contracts/README.md`](contracts/README.md).
-- [`tests/direct/`](tests/direct/) — 35 direct-mode tests (registration, evaluation, challenges, settlement, and a direct proof that the Equivalence Principle validator re-derives its answer rather than trusting the leader). See [`tests/README.md`](tests/README.md).
+- [`tests/direct/`](tests/direct/) — 39 direct-mode tests (registration, evaluation, challenges, settlement, and a direct proof that the Equivalence Principle validator re-derives its answer rather than trusting the leader). See [`tests/README.md`](tests/README.md).
 - [`backend/`](backend/) — Fastify API + indexer, Postgres, Redis rate limiter. See [`backend/README.md`](backend/README.md) for local dev and Fly deployment.
 - [`frontend/`](frontend/) — Next.js app: landing, SLA registry, registration flow, adjudication room, vault/withdrawals. See [`frontend/README.md`](frontend/README.md).
 - [`MEMORY.md`](MEMORY.md) — running log of every architecture decision and every real bug found (with root cause and fix) across the contract, backend, and frontend, including issues only surfaced by live StudioNet usage.
@@ -89,8 +89,8 @@ The backend is a pure read cache. It never makes a breach determination, never p
 
 Every mechanism in the lifecycle has been exercised live on StudioNet against a real deployed contract, not just written and unit-tested — though not all of it on the same claim in the same run, since some steps are gated by real wall-clock time (a challenge window) rather than something that can be rushed for a demo:
 
-- **Verified on the current deployment** (`0x8aB7b78e29D9af2b66A7B01E1D41E56Fb6595614`): SLA proposal (with pinned exclusion terms), dual-sided escrow/bond funding, activation, claim submission and pinning, independent multi-validator evaluation (resolved `RESOLVED_NO_BREACH`), a full challenge round (additional sources appended, re-adjudicated, bond correctly slashed to the winning party).
-- **Verified on a prior deployment**, same contract logic: claim finalization and pull-based withdrawal, including correct fund movement to both parties' withdrawable balances.
-- **Verified by the test suite** (`tests/direct/`, 35 passing): every settlement branch (no-breach, partial, capped-at-escrow, inconclusive), both challenge outcomes, finalize idempotency, and — independently of any live run — a direct proof that the Equivalence Principle validator re-derives its answer and rejects disagreement beyond tolerance rather than trusting the leader.
+- **Verified on the current deployment** (`0x61D6F3bdf53118523572a141F7E1904591147F94`): a real `propose_sla` transaction (`0x9850777edfff7c06b9fc0cded9d670f8a53637908599f49e1f37ff3ea5bddd6a`), with the pinned `covered_service` and the on-chain-derived `grace_minutes` (43 min, from a 99.90% target over a 30-day term) both read back correctly from `get_sla("SLA-1")` and confirmed rendering correctly on the live frontend registry page.
+- **Verified on the prior deployment** (`0x8aB7b78e29D9af2b66A7B01E1D41E56Fb6595614`, same contract logic pre-review-fixes): the full lifecycle end to end — SLA proposal with pinned exclusion terms, dual-sided escrow/bond funding, activation, claim submission and pinning, independent multi-validator evaluation (resolved `RESOLVED_NO_BREACH`), a full challenge round (additional sources appended, re-adjudicated, bond correctly slashed to the winning party), claim finalization, and pull-based withdrawal with correct fund movement to both parties' withdrawable balances.
+- **Verified by the test suite** (`tests/direct/`, 39 passing): every settlement branch (no-breach, partial, capped-at-escrow, inconclusive), both challenge outcomes, finalize idempotency, the review-flagged fixes (`target_uptime_bps` materiality, unusable-source quorum exclusion, finalize concluding the SLA), and — independently of any live run — a direct proof that the Equivalence Principle validator re-derives its answer and rejects disagreement beyond tolerance rather than trusting the leader.
 
-Finalize/withdraw on the current deployment's live claim is correctly blocked until its challenge window closes (it was re-extended by the challenge round, per design) — this is the contract enforcing its own timing rules, not an open bug. See `MEMORY.md` for the full verification log and every real bug found along the way, with root cause and fix.
+The full funding → claim → challenge → finalize → withdraw cycle has not yet been re-run against the current deployment's `SLA-1` — it remains at `PROPOSED`, pending real GEN to fund it — but every one of those mechanisms is proven both by the prior deployment's live run and by the direct-mode test suite, so this is a scheduling gap, not an open functional question. See `MEMORY.md` for the full verification log and every real bug found along the way, with root cause and fix, and `review.md` for the review-driven fixes and their live verification.
