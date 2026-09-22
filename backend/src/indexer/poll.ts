@@ -243,8 +243,14 @@ async function discoverNewClaims(budget: Budget): Promise<void> {
 async function refreshNonTerminal(budget: Budget): Promise<void> {
   if (!budget.has()) return;
 
+  // Skip rows synced more recently than minRefreshIntervalMs — a
+  // non-terminal row can't have changed on-chain since we last read it if
+  // barely any time has passed, so re-fetching it just burns budget the
+  // API relay layer needs. See config.ts for why this floor exists.
+  const staleBefore = new Date(Date.now() - config.indexer.minRefreshIntervalMs);
+
   const staleSlas = await prisma.slaAgreement.findMany({
-    where: { status: { in: NON_TERMINAL_SLA_STATUSES } },
+    where: { status: { in: NON_TERMINAL_SLA_STATUSES }, syncedAt: { lt: staleBefore } },
     orderBy: { syncedAt: "asc" },
     take: budget.remaining,
   });
@@ -257,6 +263,7 @@ async function refreshNonTerminal(budget: Budget): Promise<void> {
   if (!budget.has()) return;
   const staleClaims = await prisma.claim.findMany({
     where: {
+      syncedAt: { lt: staleBefore },
       OR: [
         { status: "PINNED" },
         { AND: [{ status: { in: RESOLVED_CLAIM_STATUSES } }, { finalized: false }] },
@@ -273,7 +280,7 @@ async function refreshNonTerminal(budget: Budget): Promise<void> {
 
   if (!budget.has()) return;
   const staleChallenges = await prisma.challenge.findMany({
-    where: { resolved: false },
+    where: { resolved: false, syncedAt: { lt: staleBefore } },
     orderBy: { syncedAt: "asc" },
     take: budget.remaining,
   });

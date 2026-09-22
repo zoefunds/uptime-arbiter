@@ -553,6 +553,39 @@ deploy that changes indexer field-mapping — wait for deploy completion
 confirmation first**, especially when the new field lands only in the
 `create` path.
 
+## Rate-limit budget was self-exhausted by the indexer, not by real traffic
+The Redis limiter (`backend/src/lib/rateLimiter.ts`) enforces 420 calls/hour
+(500 real StudioNet ceiling − 80 safety margin), but the indexer alone was
+capable of spending up to 360/hour of that just from steady-state polling
+(60s cycles × `MAX_RPC_CALLS_PER_CYCLE = 6`) — 86% of the entire budget,
+even when nothing on-chain had changed, leaving almost no headroom for live
+API relay reads (per-user withdrawable-balance lookups, `/protocol/stats`)
+sharing the same limiter. That's why the limit "gets exhausted so fast":
+it was never really 420/hour of *useful* capacity, it was ~360/hour of
+self-inflicted polling plus whatever scraps were left.
+
+Fixed two ways in `backend/src/config.ts` / `backend/src/indexer/poll.ts`:
+1. **`pollIntervalMs` widened from 60s to 180s** — worst case the indexer
+   now spends 6 × 20 = 120 calls/hour instead of 360, freeing ~300/hour of
+   real headroom. Nothing in the lifecycle needs sub-3-minute indexer sync
+   latency: every write a user makes is read back live via genlayer-js at
+   write time (the frontend never waits on the indexer for its own
+   writes) — the indexer only needs to be fast enough for *other* viewers'
+   registry/claims pages, which 3 minutes comfortably is.
+2. **Added `minRefreshIntervalMs` (120s) as a staleness floor** on
+   `refreshNonTerminal()`'s three queries (non-terminal SLAs, open claims,
+   unresolved challenges) — a row synced more recently than that is
+   skipped entirely instead of being re-fetched every single cycle
+   regardless of whether it could plausibly have changed. Previously the
+   query only sorted by `syncedAt asc` with no floor, so a handful of
+   long-lived non-terminal rows (e.g. an `ACTIVE` SLA sitting for days)
+   would get re-spent on every cycle forever, for no informational gain.
+
+Net effect: same correctness guarantees (nothing terminal is ever
+re-fetched, nothing non-terminal goes unsynced for long), roughly 3x more
+of the hourly budget now available for actual user-facing reads instead of
+being consumed by the indexer talking to itself.
+
 ## Next phases
 The full lifecycle (propose → fund → activate → claim → evaluate →
 challenge → resolve) is done and verified live, more than once, on more
