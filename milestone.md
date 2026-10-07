@@ -6,7 +6,7 @@ All escrow and settlement now belongs to Base Sepolia USDC (`0x036CbD53842c54266
 
 `BaseUsdcEscrow` was deployed to Base Sepolia at `0xf19027e7EA05165A44336F5A2c53f7A09B26a0F3` in transaction `0x30e32c824a775d230fef1baafcc5a4dcb5d0511d5e80506e461fe4947bcdcddb`. Its relayer is the deployment wallet `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb`.
 
-The paired GenLayer adjudicator was deployed and accepted at `0xC9f0fC17f29D7F4521dBef942CBE9481dB839d0D` in transaction `0xf20e2a1e6e2e12b7c273045a275dc730f89148cce71aca200833f2d9f9914426`.
+The active paired GenLayer adjudicator was deployed and accepted unanimously at `0x9FE0d15132993eCC93C5D665be331D48Fb60532a` in transaction `0x2685b4e47760d8e2ba2406347fb449b8499f50c2daffaaeb2fc185f3ace385d3`.
 
 The escrow contract requires explicit USDC approval and exact funding by each party. A relayed decision can settle only an active agreement, and customer payout plus provider refund must exactly equal the USDC held. This prevents the relayer from minting a payout through a malformed decision. Cancellation and expiry refund the original funders.
 
@@ -20,6 +20,7 @@ The escrow contract requires explicit USDC approval and exact funding by each pa
 - A dedicated relayer uses the Base Sepolia deployment account only after a terminal GenLayer verdict. It reads the Base agreement, rejects a payout above the USDC held, and submits `relayAdjudication`. Its database finalization marker makes that relay idempotent across indexer polling cycles.
 - The previous Fly deployment was not reused. A clean PostgreSQL database, `uptime_arbiter_usdc`, is attached to the new Fly application `uptime-arbiter-usdc-api`; no prior SLA data was copied, migrated, or left addressable. The public API is live at `https://uptime-arbiter-usdc-api.fly.dev/healthz`.
 - Production frontend configuration now targets the new GenLayer contract, the Base escrow, and that Fly API. The deployed UI includes `/verification`, which displays the executed E2E test record rather than seeded/placeholder SLA data.
+- Each funding action is now paired: the wallet first confirms the USDC transfer on Base Sepolia, then the same provider/customer records that immutable Base receipt hash on GenLayer. This is an audit acknowledgement only; GenLayer cannot custody or transfer USDC.
 
 ## Verification
 

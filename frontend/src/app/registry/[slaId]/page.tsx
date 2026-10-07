@@ -15,7 +15,7 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
   const { address } = useAccount();
   const queryClient = useQueryClient();
   const { send, pending, error: writeError, warning: writeWarning, txId } = useGenlayerWrite();
-  const { send: sendBase, approveUsdc, pending: basePending, error: baseError, txHash: baseTxHash } = useBaseUsdcWrite();
+  const { send: sendBase, approveUsdc, waitForBaseReceipt, pending: basePending, error: baseError, txHash: baseTxHash } = useBaseUsdcWrite();
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
 
@@ -40,25 +40,21 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
   async function handleLockEscrow() {
     const value = BigInt(sla.escrowWei);
     await approveUsdc(value);
-    const ok = await sendBase("fundProvider", [BigInt(sla.baseAgreementId)]);
-    if (ok) refresh();
+    const hash = await sendBase("fundProvider", [BigInt(sla.baseAgreementId)]);
+    if (!hash) return;
+    await waitForBaseReceipt(hash);
+    await send("record_base_funding", [sla.slaId, "PROVIDER", hash]);
+    refresh();
   }
 
   async function handleCoSign() {
     const value = BigInt(sla.bondWei);
     await approveUsdc(value);
-    const ok = await sendBase("fundCustomer", [BigInt(sla.baseAgreementId)]);
-    if (ok) refresh();
-  }
-
-  async function handleCancel() {
-    const ok = await send("cancel_sla", [sla.slaId]);
-    if (ok) refresh();
-  }
-
-  async function handleTerminate() {
-    const ok = await send("terminate_expired_sla", [sla.slaId]);
-    if (ok) refresh();
+    const hash = await sendBase("fundCustomer", [BigInt(sla.baseAgreementId)]);
+    if (!hash) return;
+    await waitForBaseReceipt(hash);
+    await send("record_base_funding", [sla.slaId, "CUSTOMER", hash]);
+    refresh();
   }
 
   async function handleSubmitClaim() {
@@ -183,16 +179,6 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
             {sla.status === "PROPOSED" && isCustomer && !sla.customerSigned && (
               <Button className="w-full" disabled={pending || basePending} onClick={handleCoSign}>
                 {basePending ? "Approving/funding Base…" : `Approve & Lock (${formatUsdc(sla.bondWei)} USDC)`}
-              </Button>
-            )}
-            {sla.status === "PROPOSED" && (isProvider || isCustomer) && (
-              <Button variant="secondary" className="mt-2 w-full" disabled={pending} onClick={handleCancel}>
-                Cancel Proposal
-              </Button>
-            )}
-            {sla.status === "ACTIVE" && sla.activeClaimId === "" && Number(sla.termEndTs) < now && (
-              <Button variant="secondary" className="w-full" disabled={pending} onClick={handleTerminate}>
-                Terminate Expired SLA
               </Button>
             )}
           </Card>

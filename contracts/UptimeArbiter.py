@@ -15,6 +15,7 @@ class SLA:
     label: str; covered_service: str; target_uptime_bps: u256; grace_minutes: u256
     penalty_rate_usdc_per_min: u256; max_payout_usdc: u256; evidence_sources: DynArray[str]
     exclusion_terms: str; term_start_ts: u256; term_end_ts: u256; active_claim_id: str
+    provider_base_funding_tx: str; customer_base_funding_tx: str
 
 @allow_storage
 @dataclass
@@ -45,7 +46,7 @@ class UptimeArbiter(gl.Contract):
     @gl.public.view
     def get_sla(self, sla_id: str) -> dict:
         s = self.slas[sla_id]; require(s.sla_id != "", "Unknown SLA")
-        return {"sla_id":s.sla_id,"base_agreement_id":str(s.base_agreement_id),"provider":str(s.provider),"customer":str(s.customer),"label":s.label,"covered_service":s.covered_service,"target_uptime_bps":int(s.target_uptime_bps),"grace_minutes":int(s.grace_minutes),"penalty_rate_usdc_per_min":str(s.penalty_rate_usdc_per_min),"max_payout_usdc":str(s.max_payout_usdc),"evidence_sources":list(s.evidence_sources),"exclusion_terms":s.exclusion_terms,"term_start_ts":str(s.term_start_ts),"term_end_ts":str(s.term_end_ts),"active_claim_id":s.active_claim_id}
+        return {"sla_id":s.sla_id,"base_agreement_id":str(s.base_agreement_id),"provider":str(s.provider),"customer":str(s.customer),"label":s.label,"covered_service":s.covered_service,"target_uptime_bps":int(s.target_uptime_bps),"grace_minutes":int(s.grace_minutes),"penalty_rate_usdc_per_min":str(s.penalty_rate_usdc_per_min),"max_payout_usdc":str(s.max_payout_usdc),"evidence_sources":list(s.evidence_sources),"exclusion_terms":s.exclusion_terms,"term_start_ts":str(s.term_start_ts),"term_end_ts":str(s.term_end_ts),"active_claim_id":s.active_claim_id,"provider_base_funding_tx":s.provider_base_funding_tx,"customer_base_funding_tx":s.customer_base_funding_tx}
 
     @gl.public.view
     def get_claim(self, claim_id: str) -> dict:
@@ -65,8 +66,21 @@ class UptimeArbiter(gl.Contract):
         require(int(penalty_rate_usdc_per_min) > 0 and int(max_payout_usdc) > 0, "USDC terms must be positive")
         self.sla_count += u256(1); identifier = "SLA-" + str(self.sla_count)
         minutes = (term_end_ts-term_start_ts)//60; grace = minutes*(10000-target_uptime_bps)//10000
-        self.slas[identifier] = SLA(identifier,u256(base_agreement_id),gl.message.sender_address,Address(customer),label,covered_service,u256(target_uptime_bps),u256(grace),u256(int(penalty_rate_usdc_per_min)),u256(int(max_payout_usdc)),DynArray(evidence_sources),exclusion_terms,u256(term_start_ts),u256(term_end_ts),"")
+        self.slas[identifier] = SLA(identifier,u256(base_agreement_id),gl.message.sender_address,Address(customer),label,covered_service,u256(target_uptime_bps),u256(grace),u256(int(penalty_rate_usdc_per_min)),u256(int(max_payout_usdc)),DynArray(evidence_sources),exclusion_terms,u256(term_start_ts),u256(term_end_ts),"","","")
         self.sla_ids.append(identifier); return identifier
+
+    @gl.public.write
+    def record_base_funding(self, sla_id: str, role: str, base_tx_hash: str) -> None:
+        """Audit acknowledgement only: USDC remains exclusively on Base Sepolia."""
+        s=self.slas[sla_id]; require(s.sla_id != "" and len(base_tx_hash) == 66 and base_tx_hash.startswith("0x"), "Invalid Base receipt")
+        if role == "PROVIDER":
+            require(gl.message.sender_address == s.provider and s.provider_base_funding_tx == "", "Unauthorized or already acknowledged")
+            s.provider_base_funding_tx=base_tx_hash
+        elif role == "CUSTOMER":
+            require(gl.message.sender_address == s.customer and s.customer_base_funding_tx == "", "Unauthorized or already acknowledged")
+            s.customer_base_funding_tx=base_tx_hash
+        else: raise gl.vm.UserError("[EXPECTED] Invalid funding role")
+        self.slas[sla_id]=s
 
     @gl.public.write
     def submit_claim(self, sla_id: str, window_start_ts: int, window_end_ts: int) -> str:
