@@ -5,7 +5,7 @@ const PIPELINE = [
   {
     step: "01",
     title: "Escrow & Terms",
-    body: "Provider and customer lock GEN escrow and sign an immutable SLA penalty schedule.",
+    body: "Provider and customer lock Base Sepolia USDC and sign an immutable SLA penalty schedule.",
     state: "LOCKED",
   },
   {
@@ -35,7 +35,7 @@ const PIPELINE = [
   {
     step: "06",
     title: "Deterministic Settlement",
-    body: "A separate, non-AI function turns agreed breach-minutes into a GEN payout, capped at escrow.",
+    body: "A separate, non-AI function turns agreed breach-minutes into a USDC payout, capped at escrow.",
     state: "SETTLED",
   },
 ];
@@ -65,7 +65,7 @@ export default function LandingPage() {
           <p className="mb-8 max-w-3xl text-sm leading-relaxed text-on-surface-variant lg:text-base">
             <strong className="font-semibold text-on-surface">Uptime Arbiter</strong> is an onchain
             SLA-breach adjudication protocol for infrastructure providers and their customers.
-            Lock GEN escrow, precommit public evidence sources, and let decentralized GenLayer
+            Lock USDC on Base Sepolia, precommit public evidence sources, and let decentralized GenLayer
             validators independently arbitrate downtime through deterministic consensus.
           </p>
 
@@ -154,7 +154,7 @@ export default function LandingPage() {
             <TrustCard
               icon="account_balance_wallet"
               title="Decoupled Settlement"
-              body="A fully deterministic function — untouched by any LLM or validator — turns agreed breach-minutes into a capped GEN payout."
+              body="A fully deterministic function — untouched by any LLM or validator — turns agreed breach-minutes into a capped USDC payout on Base Sepolia."
               footer="payout = breach_minutes × rate, capped at escrow"
             />
           </div>

@@ -15,6 +15,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export interface SlaRow {
   slaId: string;
+  baseAgreementId: string;
   provider: string;
   customer: string;
   label: string;

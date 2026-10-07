@@ -69,41 +69,46 @@ async function upsertSla(slaId: string): Promise<void> {
     where: { slaId },
     create: {
       slaId,
+      baseAgreementId: toStr(sla.base_agreement_id),
       provider: toStr(sla.provider),
       customer: toStr(sla.customer),
       label: toStr(sla.label),
       coveredService: toStr(sla.covered_service),
       targetUptimeBps: Number(sla.target_uptime_bps ?? 0),
       graceMinutes: Number(sla.grace_minutes ?? 0),
-      penaltyRateWeiPerMin: toStr(sla.penalty_rate_wei_per_min),
-      escrowWei: toStr(sla.escrow_wei),
-      escrowDeposited: toStr(sla.escrow_deposited),
-      bondWei: toStr(sla.bond_wei),
-      bondDeposited: toStr(sla.bond_deposited),
-      challengeBondWei: toStr(sla.challenge_bond_wei),
-      toleranceMinutes: Number(sla.tolerance_minutes ?? 0),
-      challengeWindowSeconds: Number(sla.challenge_window_seconds ?? 0),
-      termSeconds: Number(sla.term_seconds ?? 0),
+      // Legacy database column names are retained until the production
+      // migration; values are six-decimal Base USDC units from the
+      // adjudicator, never a GenLayer balance.
+      penaltyRateWeiPerMin: toStr(sla.penalty_rate_usdc_per_min),
+      escrowWei: toStr(sla.max_payout_usdc),
+      escrowDeposited: toStr(sla.max_payout_usdc),
+      bondWei: "0",
+      bondDeposited: "0",
+      challengeBondWei: "0",
+      toleranceMinutes: 0,
+      challengeWindowSeconds: 0,
+      termSeconds: Number(sla.term_end_ts ?? 0) - Number(sla.term_start_ts ?? 0),
       evidenceSources: toStrArray(sla.evidence_sources),
       exclusionTerms: toStr(sla.exclusion_terms),
-      sourceDigest: toStr(sla.source_digest),
-      adjudicatedWindows: toStrArray(sla.adjudicated_windows),
-      status: toStr(sla.status),
-      providerFunded: Boolean(sla.provider_funded),
-      customerSigned: Boolean(sla.customer_signed),
-      createdAt: toStr(sla.created_at),
-      registrationDeadlineTs: toBigInt(sla.registration_deadline_ts),
+      sourceDigest: "",
+      adjudicatedWindows: [],
+      status: "ACTIVE",
+      providerFunded: false,
+      customerSigned: false,
+      createdAt: "",
+      registrationDeadlineTs: BigInt(0),
       termStartTs: toBigInt(sla.term_start_ts),
       termEndTs: toBigInt(sla.term_end_ts),
       activeClaimId: toStr(sla.active_claim_id),
     },
     update: {
-      escrowDeposited: toStr(sla.escrow_deposited),
-      bondDeposited: toStr(sla.bond_deposited),
-      adjudicatedWindows: toStrArray(sla.adjudicated_windows),
-      status: toStr(sla.status),
-      providerFunded: Boolean(sla.provider_funded),
-      customerSigned: Boolean(sla.customer_signed),
+      baseAgreementId: toStr(sla.base_agreement_id),
+      escrowDeposited: toStr(sla.max_payout_usdc),
+      bondDeposited: "0",
+      adjudicatedWindows: [],
+      status: "ACTIVE",
+      providerFunded: false,
+      customerSigned: false,
       termStartTs: toBigInt(sla.term_start_ts),
       termEndTs: toBigInt(sla.term_end_ts),
       activeClaimId: toStr(sla.active_claim_id),
@@ -122,68 +127,27 @@ async function upsertClaim(claimId: string): Promise<void> {
       windowStartTs: toBigInt(claim.window_start_ts),
       windowEndTs: toBigInt(claim.window_end_ts),
       pinnedSources: toStrArray(claim.pinned_sources),
-      pinnedSourceDigest: toStr(claim.pinned_source_digest),
-      submittedAt: toStr(claim.submitted_at),
+      pinnedSourceDigest: "",
+      submittedAt: "",
       status: toStr(claim.status),
       breachMinutes: Number(claim.breach_minutes ?? 0),
       inconclusiveReason: toStr(claim.inconclusive_reason),
-      recommendedPayoutBps: Number(claim.recommended_payout_bps ?? 0),
-      payoutWei: toStr(claim.payout_wei),
+      recommendedPayoutBps: Number(claim.payout_bps ?? 0),
+      payoutWei: toStr(claim.payout_usdc),
       resolvedAt: toStr(claim.resolved_at),
-      challengeDeadlineTs: toBigInt(claim.challenge_deadline_ts),
-      challengeCount: Number(claim.challenge_count ?? 0),
-      activeChallengeId: toStr(claim.active_challenge_id),
-      isChallenged: Boolean(claim.is_challenged),
-      finalized: Boolean(claim.finalized),
+      challengeDeadlineTs: BigInt(0), challengeCount: 0, activeChallengeId: "", isChallenged: false, finalized: Boolean(claim.relayed),
     },
     update: {
       status: toStr(claim.status),
       breachMinutes: Number(claim.breach_minutes ?? 0),
       inconclusiveReason: toStr(claim.inconclusive_reason),
-      recommendedPayoutBps: Number(claim.recommended_payout_bps ?? 0),
-      payoutWei: toStr(claim.payout_wei),
+      recommendedPayoutBps: Number(claim.payout_bps ?? 0),
+      payoutWei: toStr(claim.payout_usdc),
       resolvedAt: toStr(claim.resolved_at),
-      challengeDeadlineTs: toBigInt(claim.challenge_deadline_ts),
-      challengeCount: Number(claim.challenge_count ?? 0),
-      activeChallengeId: toStr(claim.active_challenge_id),
-      isChallenged: Boolean(claim.is_challenged),
-      finalized: Boolean(claim.finalized),
+      challengeDeadlineTs: BigInt(0), challengeCount: 0, activeChallengeId: "", isChallenged: false, finalized: Boolean(claim.relayed),
     },
   });
 
-  const challengeId = toStr(claim.active_challenge_id);
-  if (challengeId) {
-    await upsertChallenge(challengeId);
-  }
-}
-
-async function upsertChallenge(challengeId: string): Promise<void> {
-  const challenge = await contract.getChallenge(challengeId);
-  await prisma.challenge.upsert({
-    where: { challengeId },
-    create: {
-      challengeId,
-      claimId: toStr(challenge.claim_id),
-      challenger: toStr(challenge.challenger),
-      additionalSources: toStrArray(challenge.additional_sources),
-      rationale: toStr(challenge.rationale),
-      bondWei: toStr(challenge.bond_wei),
-      bondDeposited: toStr(challenge.bond_deposited),
-      filedAt: toStr(challenge.filed_at),
-      resolved: Boolean(challenge.resolved),
-      outcome: toStr(challenge.outcome),
-      resolvedAt: toStr(challenge.resolved_at),
-      priorBreachMinutes: Number(challenge.prior_breach_minutes ?? 0),
-      newBreachMinutes: Number(challenge.new_breach_minutes ?? 0),
-    },
-    update: {
-      resolved: Boolean(challenge.resolved),
-      outcome: toStr(challenge.outcome),
-      resolvedAt: toStr(challenge.resolved_at),
-      newBreachMinutes: Number(challenge.new_breach_minutes ?? 0),
-      bondDeposited: toStr(challenge.bond_deposited),
-    },
-  });
 }
 
 async function getCursor() {
@@ -278,17 +242,6 @@ async function refreshNonTerminal(budget: Budget): Promise<void> {
     budget.spend();
   }
 
-  if (!budget.has()) return;
-  const staleChallenges = await prisma.challenge.findMany({
-    where: { resolved: false, syncedAt: { lt: staleBefore } },
-    orderBy: { syncedAt: "asc" },
-    take: budget.remaining,
-  });
-  for (const row of staleChallenges) {
-    if (!budget.has()) return;
-    await upsertChallenge(row.challengeId);
-    budget.spend();
-  }
 }
 
 async function runCycle(): Promise<void> {

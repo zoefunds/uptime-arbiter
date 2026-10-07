@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
 import { createAppKit } from "@reown/appkit/react";
 import { wagmiAdapter, reownProjectId } from "@/lib/wagmi";
-import { studioNetChain } from "@/lib/chain";
+import { baseSepolia } from "viem/chains";
 
 const queryClient = new QueryClient();
 
@@ -16,11 +16,11 @@ function ensureAppKit() {
   appKitInitialized = true;
   createAppKit({
     adapters: [wagmiAdapter],
-    networks: [studioNetChain],
+    networks: [baseSepolia],
     projectId: reownProjectId,
     metadata: {
       name: "Uptime Arbiter",
-      description: "Onchain SLA-breach adjudication protocol on GenLayer",
+      description: "USDC-backed SLA-breach adjudication protocol on Base Sepolia",
       url: typeof window !== "undefined" ? window.location.origin : "https://uptime-arbiter.vercel.app",
       icons: ["/favicon.svg"],
     },

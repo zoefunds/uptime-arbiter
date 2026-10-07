@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { formatGen, shortAddress, STATUS_LABELS } from "@/lib/format";
+import { formatUsdc, shortAddress, STATUS_LABELS } from "@/lib/format";
 import { StatusChip, EmptyState, ErrorState, LoadingState } from "@/components/ui";
 
 const FILTERS = [
@@ -93,7 +93,7 @@ export default function RegistryPage() {
                     {(sla.targetUptimeBps / 100).toFixed(2)}%
                   </td>
                   <td className="px-4 py-3.5 font-mono text-sm text-tertiary">
-                    {formatGen(sla.escrowDeposited)} GEN
+                    {formatUsdc(sla.escrowDeposited)} USDC
                   </td>
                   <td className="px-4 py-3.5">
                     <StatusChip status={sla.status} />

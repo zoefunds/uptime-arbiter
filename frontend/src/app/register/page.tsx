@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { Card, Button } from "@/components/ui";
+import { useBaseUsdcWrite } from "@/hooks/use-base-usdc-write";
 import { useGenlayerWrite } from "@/hooks/use-genlayer-write";
-import { genToWei } from "@/lib/format";
+import { usdcToUnits } from "@/lib/format";
 
 const DAY = 24 * 3600;
 
@@ -19,6 +20,9 @@ const SAMPLE_SOURCES = [
 ];
 
 const SAMPLE_VALUES = {
+  // A valid EVM address is included so the Base contract accepts the draft.
+  // Replace it with the counterparty's Base Sepolia address before funding.
+  customer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
   label: "GitHub Actions Runner Fleet (us-east-1)",
   coveredService: "GitHub Actions hosted runners (us-east-1)",
   targetUptimePct: "99.95",
@@ -37,7 +41,10 @@ const SAMPLE_VALUES = {
 export default function RegisterSlaPage() {
   const { address } = useAccount();
   const router = useRouter();
-  const { send, pending, error, warning, txId } = useGenlayerWrite();
+  const { send: sendBase, nextBaseAgreementId, waitForBaseReceipt, pending: basePending, error: baseError, txHash } = useBaseUsdcWrite();
+  const { send: sendGenlayer, pending: adjudicationPending, error: adjudicationError } = useGenlayerWrite();
+  const pending = basePending || adjudicationPending;
+  const error = baseError ?? adjudicationError;
 
   const [customer, setCustomer] = useState("");
   const [label, setLabel] = useState("");
@@ -75,6 +82,7 @@ export default function RegisterSlaPage() {
   }
 
   function fillSampleData() {
+    setCustomer(SAMPLE_VALUES.customer);
     setLabel(SAMPLE_VALUES.label);
     setCoveredService(SAMPLE_VALUES.coveredService);
     setTargetUptimePct(SAMPLE_VALUES.targetUptimePct);
@@ -105,22 +113,23 @@ export default function RegisterSlaPage() {
       return;
     }
 
-    const txId = await send("propose_sla", [
-      customer,
-      label || "Unlabeled SLA",
-      coveredService.trim(),
-      Math.round(Number(targetUptimePct) * 100),
-      genToWei(penaltyRate).toString(),
-      genToWei(escrow).toString(),
-      genToWei(bond).toString(),
-      genToWei(challengeBond).toString(),
-      Number(tolerance),
-      Number(challengeWindowHours) * 3600,
-      Number(termDays) * DAY,
-      Number(registrationTtlDays) * DAY,
-      cleanSources,
-      exclusionTerms.trim(),
-    ]);
+    // Capital agreement is created on Base Sepolia first. The subsequent
+    // GenLayer registration only binds evidence and adjudication metadata.
+    const now = Math.floor(Date.now() / 1000);
+    const baseAgreementId = await nextBaseAgreementId();
+    const txId = await sendBase("propose", [customer, usdcToUnits(escrow), usdcToUnits(bond), BigInt(now + Number(registrationTtlDays) * DAY), BigInt(now + Number(termDays) * DAY)]);
+
+    if (txId) {
+      // Do not create an orphan adjudication record: GenLayer registration
+      // happens only after Base confirms the exact agreement ID.
+      await waitForBaseReceipt(txId);
+      const adjudicationTx = await sendGenlayer("register_adjudication", [
+        Number(baseAgreementId), customer, label || "Unlabeled SLA", coveredService.trim(),
+        Math.round(Number(targetUptimePct) * 100), usdcToUnits(penaltyRate).toString(),
+        usdcToUnits(escrow).toString(), now, now + Number(termDays) * DAY, cleanSources, exclusionTerms.trim(),
+      ]);
+      if (!adjudicationTx) return;
+    }
 
     if (txId) {
       setDone(true);
@@ -157,18 +166,15 @@ export default function RegisterSlaPage() {
       </div>
 
       <div className="rounded bg-surface-container-lowest px-4 py-3 font-mono text-xs text-on-surface-variant">
-        &quot;Fill Sample Data&quot; fills every field except <strong className="text-on-surface">Customer
-        Address</strong> — that one has to be a real wallet you control (a second account in your
-        wallet extension works), since it&apos;s who will be required to co-sign and can later
-        withdraw claim payouts. The three evidence sources it fills in are real, live public status
-        endpoints (GitHub, OpenAI, AWS), not placeholders.
+        &quot;Fill Sample Data&quot; uses live GitHub, OpenAI, and AWS status endpoints and a valid Base
+        address, so its terms pass the contract&apos;s input validation. Replace the prefilled customer
+        with your actual counterparty before funding: that address must approve and fund its USDC bond.
       </div>
 
       {error && <div className="rounded bg-error/10 px-4 py-3 font-mono text-xs text-error">{error}</div>}
-      {warning && <div className="rounded bg-tertiary/10 px-4 py-3 font-mono text-xs text-tertiary">{warning}</div>}
       {done && (
         <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">
-          SLA proposed — transaction accepted ({txId}). Redirecting to the registry…
+          Base Sepolia escrow proposed ({txHash}) and its GenLayer adjudication agreement was registered.
         </div>
       )}
 
@@ -185,10 +191,10 @@ export default function RegisterSlaPage() {
             onChange={setCoveredService}
             placeholder="e.g. Checkout API (payments-eu-west)"
           />
-          <NumField label="Provider Escrow (GEN)" value={escrow} onChange={setEscrow} />
-          <NumField label="Customer Bond (GEN)" value={bond} onChange={setBond} />
-          <NumField label="Challenge Bond (GEN)" value={challengeBond} onChange={setChallengeBond} />
-          <NumField label="Penalty Rate (GEN/min)" value={penaltyRate} onChange={setPenaltyRate} />
+          <NumField label="Provider Escrow (USDC)" value={escrow} onChange={setEscrow} step="0.01" />
+          <NumField label="Customer Bond (USDC)" value={bond} onChange={setBond} step="0.01" />
+          <NumField label="Challenge Bond (USDC)" value={challengeBond} onChange={setChallengeBond} step="0.01" />
+          <NumField label="Penalty Rate (USDC/min)" value={penaltyRate} onChange={setPenaltyRate} step="0.01" />
         </div>
       </Card>
 
@@ -263,7 +269,7 @@ export default function RegisterSlaPage() {
       </Card>
 
       <Button disabled={pending} onClick={handleSubmit} className="self-start">
-        {pending ? "Broadcasting to StudioNet…" : "Propose SLA"}
+        {pending ? "Creating Base escrow, then registering GenLayer adjudication…" : "Create Base Escrow & GenLayer Adjudication"}
       </Button>
     </div>
   );

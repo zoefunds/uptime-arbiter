@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { formatGen } from "@/lib/format";
+import { formatUsdc } from "@/lib/format";
 
 export function StatsRibbon() {
   const { data, isLoading, isError } = useQuery({
@@ -12,7 +12,7 @@ export function StatsRibbon() {
   });
 
   const cells = [
-    { label: "Capital in Escrow", value: data ? `${formatGen(data.total_active_escrow_wei ?? "0")} GEN` : "—" },
+    { label: "Capital in Escrow", value: data ? `$${formatUsdc(data.total_active_escrow_usdc ?? "0")} USDC` : "—" },
     { label: "SLAs Registered", value: data?.total_slas_registered ?? "—" },
     { label: "Active SLAs", value: data?.total_slas_active ?? "—" },
     { label: "Claims Submitted", value: data?.total_claims_submitted ?? "—" },

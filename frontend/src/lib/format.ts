@@ -1,20 +1,20 @@
-const ATTO = BigInt("1000000000000000000"); // 10^18
+const USDC_UNIT = 1_000_000n; // USDC has 6 decimals on Base
 
-export function formatGen(wei: string | bigint, maxDecimals = 4): string {
-  const value = typeof wei === "bigint" ? wei : BigInt(wei || "0");
-  const whole = value / ATTO;
-  const fraction = value % ATTO;
-  const fractionStr = fraction.toString().padStart(18, "0").slice(0, maxDecimals);
+export function formatUsdc(units: string | bigint, maxDecimals = 2): string {
+  const value = typeof units === "bigint" ? units : BigInt(units || "0");
+  const whole = value / USDC_UNIT;
+  const fraction = value % USDC_UNIT;
+  const fractionStr = fraction.toString().padStart(6, "0").slice(0, maxDecimals);
   const trimmed = fractionStr.replace(/0+$/, "");
   const wholeStr = whole.toLocaleString("en-US");
   return trimmed ? `${wholeStr}.${trimmed}` : wholeStr;
 }
 
-export function genToWei(gen: string): bigint {
-  if (!gen || Number.isNaN(Number(gen))) return BigInt(0);
-  const [whole, fraction = ""] = gen.split(".");
-  const fractionPadded = (fraction + "0".repeat(18)).slice(0, 18);
-  return BigInt(whole || "0") * ATTO + BigInt(fractionPadded || "0");
+export function usdcToUnits(usdc: string): bigint {
+  if (!usdc || Number.isNaN(Number(usdc))) return 0n;
+  const [whole, fraction = ""] = usdc.split(".");
+  const fractionPadded = (fraction + "0".repeat(6)).slice(0, 6);
+  return BigInt(whole || "0") * USDC_UNIT + BigInt(fractionPadded || "0");
 }
 
 export function formatTs(ts: string | number): string {

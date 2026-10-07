@@ -21,14 +21,10 @@ export async function protocolRoutes(app: FastifyInstance) {
     };
   });
 
-  app.get("/protocol/stats", async (_request, reply) => {
-    try {
-      const stats = await contract.getProtocolStats();
-      return stats;
-    } catch (err) {
-      app.log.error({ err }, "live protocol stats read failed, falling back to cache");
-      return reply.send({ note: "live read unavailable, see /protocol/stats/cached" });
-    }
+  app.get("/protocol/stats", async () => {
+    // No monetary state is held on GenLayer. Base escrow totals are indexed
+    // separately by the relay service once an escrow deployment is configured.
+    return { total_active_escrow_usdc: "0", note: "Base Sepolia escrow totals pending indexer configuration" };
   });
 
   app.get("/slas", async (request) => {
@@ -106,14 +102,4 @@ export async function protocolRoutes(app: FastifyInstance) {
     return { challenge: row };
   });
 
-  app.get("/protocol/withdrawable/:address", async (request, reply) => {
-    const { address } = request.params as { address: string };
-    try {
-      const balance = await contract.getWithdrawableBalance(address);
-      return { address, withdrawableWei: balance };
-    } catch (err) {
-      app.log.error({ err }, "withdrawable balance read failed");
-      return reply.code(502).send({ error: "Unable to read balance from StudioNet right now" });
-    }
-  });
 }

@@ -5,15 +5,17 @@ import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { formatGen, formatTs, shortAddress, STATUS_LABELS } from "@/lib/format";
+import { formatUsdc, formatTs, shortAddress, STATUS_LABELS } from "@/lib/format";
 import { Card, StatusChip, Button, LoadingState, ErrorState } from "@/components/ui";
 import { useGenlayerWrite } from "@/hooks/use-genlayer-write";
+import { useBaseUsdcWrite } from "@/hooks/use-base-usdc-write";
 
 export default function SlaDetailPage({ params }: { params: Promise<{ slaId: string }> }) {
   const { slaId } = use(params);
   const { address } = useAccount();
   const queryClient = useQueryClient();
   const { send, pending, error: writeError, warning: writeWarning, txId } = useGenlayerWrite();
+  const { send: sendBase, approveUsdc, pending: basePending, error: baseError, txHash: baseTxHash } = useBaseUsdcWrite();
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
 
@@ -37,13 +39,15 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
 
   async function handleLockEscrow() {
     const value = BigInt(sla.escrowWei);
-    const ok = await send("lock_provider_escrow", [sla.slaId], value);
+    await approveUsdc(value);
+    const ok = await sendBase("fundProvider", [BigInt(sla.baseAgreementId)]);
     if (ok) refresh();
   }
 
   async function handleCoSign() {
     const value = BigInt(sla.bondWei);
-    const ok = await send("co_sign_and_lock_bond", [sla.slaId, sla.sourceDigest], value);
+    await approveUsdc(value);
+    const ok = await sendBase("fundCustomer", [BigInt(sla.baseAgreementId)]);
     if (ok) refresh();
   }
 
@@ -80,6 +84,7 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
       {writeError && (
         <div className="rounded bg-error/10 px-4 py-3 font-mono text-xs text-error">{writeError}</div>
       )}
+      {baseError && <div className="rounded bg-error/10 px-4 py-3 font-mono text-xs text-error">{baseError}</div>}
       {writeWarning && (
         <div className="rounded bg-tertiary/10 px-4 py-3 font-mono text-xs text-tertiary">{writeWarning}</div>
       )}
@@ -88,6 +93,7 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
           Transaction accepted: {txId}
         </div>
       )}
+      {baseTxHash && <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">Base Sepolia transaction submitted: {baseTxHash}</div>}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         <div className="flex flex-col gap-6 xl:col-span-8">
@@ -99,7 +105,7 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
               <Field label="Covered Service" value={sla.coveredService || "—"} />
               <Field label="Target Uptime" value={`${(sla.targetUptimeBps / 100).toFixed(2)}%`} />
               <Field label="Grace (derived)" value={`${sla.graceMinutes} min`} />
-              <Field label="Penalty Rate" value={`${formatGen(sla.penaltyRateWeiPerMin)} GEN/min`} />
+              <Field label="Penalty Rate" value={`${formatUsdc(sla.penaltyRateWeiPerMin)} USDC/min`} />
               <Field label="Tolerance" value={`± ${sla.toleranceMinutes} min`} />
               <Field label="Challenge Window" value={`${(sla.challengeWindowSeconds / 3600).toFixed(0)}h`} />
               <Field label="Term Start" value={sla.termStartTs === "0" ? "—" : formatTs(sla.termStartTs)} />
@@ -165,18 +171,18 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
           <Card>
             <h2 className="mb-4 font-display text-lg font-semibold text-on-surface">Escrow Status</h2>
             <div className="mb-4 flex flex-col gap-2 font-mono text-xs">
-              <StatusRow label="Provider escrow" done={sla.providerFunded} amount={`${formatGen(sla.escrowWei)} GEN`} />
-              <StatusRow label="Customer bond" done={sla.customerSigned} amount={`${formatGen(sla.bondWei)} GEN`} />
+              <StatusRow label="Base provider escrow" done={sla.providerFunded} amount={`${formatUsdc(sla.escrowWei)} USDC`} />
+              <StatusRow label="Base customer bond" done={sla.customerSigned} amount={`${formatUsdc(sla.bondWei)} USDC`} />
             </div>
 
             {sla.status === "PROPOSED" && isProvider && !sla.providerFunded && (
-              <Button className="w-full" disabled={pending} onClick={handleLockEscrow}>
-                {pending ? "Confirming…" : `Lock Escrow (${formatGen(sla.escrowWei)} GEN)`}
+              <Button className="w-full" disabled={pending || basePending} onClick={handleLockEscrow}>
+                {basePending ? "Approving/funding Base…" : `Approve & Lock (${formatUsdc(sla.escrowWei)} USDC)`}
               </Button>
             )}
             {sla.status === "PROPOSED" && isCustomer && !sla.customerSigned && (
-              <Button className="w-full" disabled={pending} onClick={handleCoSign}>
-                {pending ? "Confirming…" : `Co-Sign & Lock Bond (${formatGen(sla.bondWei)} GEN)`}
+              <Button className="w-full" disabled={pending || basePending} onClick={handleCoSign}>
+                {basePending ? "Approving/funding Base…" : `Approve & Lock (${formatUsdc(sla.bondWei)} USDC)`}
               </Button>
             )}
             {sla.status === "PROPOSED" && (isProvider || isCustomer) && (

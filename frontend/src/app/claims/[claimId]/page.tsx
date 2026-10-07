@@ -4,7 +4,7 @@ import { use, useState } from "react";
 import { useAccount } from "wagmi";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { formatGen, formatTs, timeRemaining, shortAddress, STATUS_LABELS } from "@/lib/format";
+import { formatUsdc, formatTs, timeRemaining, shortAddress, STATUS_LABELS } from "@/lib/format";
 import { Card, StatusChip, Button, LoadingState, ErrorState } from "@/components/ui";
 import { useGenlayerWrite } from "@/hooks/use-genlayer-write";
 
@@ -153,7 +153,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
               <div className="grid grid-cols-2 gap-4 font-mono text-sm md:grid-cols-4">
                 <Field label="Verdict" value={STATUS_LABELS[claim.status] ?? claim.status} />
                 <Field label="Agreed Breach" value={`${claim.breachMinutes} min`} />
-                <Field label="Computed Payout" value={`${formatGen(claim.payoutWei)} GEN`} />
+                <Field label="Indicative USDC Payout" value={`${formatUsdc(claim.payoutWei)} USDC`} />
                 <Field label="Resolved At" value={claim.resolvedAt || "—"} />
               </div>
             </Card>
@@ -177,7 +177,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
               </h2>
               <div className="grid grid-cols-2 gap-4 font-mono text-sm md:grid-cols-4">
                 <Field label="Challenger" value={shortAddress(challenge.challenger)} />
-                <Field label="Bond" value={`${formatGen(challenge.bondWei)} GEN`} />
+                <Field label="Bond" value={`${formatUsdc(challenge.bondWei)} USDC`} />
                 <Field label="Outcome" value={challenge.outcome} />
                 <Field
                   label="Re-adjudicated Breach"

@@ -52,6 +52,7 @@ model IndexerCursor {
 
 model SlaAgreement {
   slaId                 String   @id
+  baseAgreementId       String   @default("")
   provider              String
   customer              String
   label                 String

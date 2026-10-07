@@ -1,30 +1,10 @@
 "use client";
 
 import { useAccount } from "wagmi";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
-import { formatGen } from "@/lib/format";
-import { Card, Button, EmptyState } from "@/components/ui";
-import { useGenlayerWrite } from "@/hooks/use-genlayer-write";
+import { Card, EmptyState } from "@/components/ui";
 
 export default function VaultPage() {
   const { address } = useAccount();
-  const queryClient = useQueryClient();
-  const { send, pending, error, warning, txId } = useGenlayerWrite();
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["withdrawable", address],
-    queryFn: () => api.getWithdrawable(address!),
-    enabled: !!address,
-    refetchInterval: 10_000,
-  });
-
-  async function handleWithdraw() {
-    const ok = await send("withdraw", []);
-    if (ok) {
-      await queryClient.invalidateQueries({ queryKey: ["withdrawable", address] });
-    }
-  }
 
   if (!address) {
     return (
@@ -37,49 +17,29 @@ export default function VaultPage() {
     );
   }
 
-  const balance = data?.withdrawableWei ?? "0";
-  const hasBalance = balance !== "0";
-
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 lg:px-6">
       <div>
         <span className="mb-1 block font-mono text-[10px] uppercase tracking-widest text-primary">
-          Pull-Based Settlement
+          Base Sepolia Settlement
         </span>
         <h1 className="font-display text-2xl font-bold uppercase text-on-surface lg:text-3xl">
-          Vault & Withdrawals
+          USDC Settlement
         </h1>
         <p className="mt-2 text-sm text-on-surface-variant">
-          Funds are never pushed automatically. Every settlement — claim payouts, escrow refunds,
-          bond returns, slashed bond forfeitures — first credits your address&apos;s internal
-          balance on the contract. Withdraw it here whenever you like.
+          Base Sepolia escrow transfers USDC directly when an adjudication is relayed. GenLayer
+          holds no funds and has no withdrawal function.
         </p>
       </div>
 
-      {error && <div className="rounded bg-error/10 px-4 py-3 font-mono text-xs text-error">{error}</div>}
-      {warning && <div className="rounded bg-tertiary/10 px-4 py-3 font-mono text-xs text-tertiary">{warning}</div>}
-      {txId && (
-        <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">
-          Withdrawal accepted: {txId}
-        </div>
-      )}
-
       <Card className="flex flex-col items-center gap-4 py-12 text-center">
         <span className="font-mono text-[10px] uppercase tracking-wider text-on-surface-variant">
-          Withdrawable Balance
+          Settlement destination
         </span>
         <span className="font-mono text-4xl font-semibold text-secondary">
-          {isLoading ? "…" : `${formatGen(balance)} GEN`}
+          Your connected Base Sepolia wallet
         </span>
-        <Button disabled={pending || !hasBalance} onClick={handleWithdraw}>
-          {pending ? "Withdrawing…" : "Withdraw to Wallet"}
-        </Button>
-        {!hasBalance && !isLoading && (
-          <p className="max-w-sm text-xs text-on-surface-variant">
-            Nothing to withdraw yet. Balances appear here once a claim you&apos;re party to is
-            finalized, an SLA proposal is cancelled, or a challenge bond is released.
-          </p>
-        )}
+        <p className="max-w-sm text-xs text-on-surface-variant">Payouts and refunds arrive in USDC once the relayer submits the final GenLayer verdict to the Base escrow contract.</p>
       </Card>
     </div>
   );
