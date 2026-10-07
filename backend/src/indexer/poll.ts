@@ -1,6 +1,7 @@
 import { prisma } from "../db/client.js";
 import { contract } from "../genlayer/client.js";
 import { config } from "../config.js";
+import { relayResolvedClaim } from "../base/relayer.js";
 
 /**
  * Uptime Arbiter indexer.
@@ -147,7 +148,19 @@ async function upsertClaim(claimId: string): Promise<void> {
       challengeDeadlineTs: BigInt(0), challengeCount: 0, activeChallengeId: "", isChallenged: false, finalized: Boolean(claim.relayed),
     },
   });
-
+  const isResolved = ["RESOLVED_BREACH", "RESOLVED_PARTIAL", "RESOLVED_NO_BREACH"].includes(toStr(claim.status));
+  if (isResolved && !Boolean(claim.relayed)) {
+    const sla = await contract.getSla(toStr(claim.sla_id));
+    const txHash = await relayResolvedClaim({
+      baseAgreementId: toStr(sla.base_agreement_id),
+      claimId,
+      payoutUsdc: toStr(claim.payout_usdc),
+      verdict: toStr(claim.status),
+    });
+    await prisma.claim.update({ where: { claimId }, data: { finalized: true } });
+    // eslint-disable-next-line no-console
+    console.log(`[relay] ${claimId} settled on Base Sepolia: ${txHash}`);
+  }
 }
 
 async function getCursor() {

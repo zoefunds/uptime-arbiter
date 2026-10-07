@@ -36,6 +36,12 @@ export const config = {
     rpcRateLimitSafetyMargin: 80, // stay at <= 420/hour from THIS service
   },
 
+  base: {
+    rpcUrl: required("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org"),
+    escrowAddress: required("BASE_ESCROW_ADDRESS"),
+    relayerPrivateKey: required("BASE_RELAYER_PRIVATE_KEY"),
+  },
+
   indexer: {
     // At MAX_RPC_CALLS_PER_CYCLE = 6 in poll.ts, a 60s cycle interval caps
     // the indexer at 360 calls/hour ON ITS OWN — 86% of the 420/hour

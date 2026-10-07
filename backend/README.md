@@ -4,10 +4,11 @@ Fastify API + background indexer, mirroring `contracts/UptimeArbiter.py`
 into Postgres for fast reads. Never makes a business decision — see the
 header comment in `prisma/schema.prisma` and `src/genlayer/client.ts`.
 
-**Currently live**:
-- API: https://uptime-arbiter-api.fly.dev (`fly.io` app `uptime-arbiter-api`)
-- Postgres: Fly Postgres app `uptime-arbiter-db`
-- Contract tracked: `0x61D6F3bdf53118523572a141F7E1904591147F94` on GenLayer StudioNet
+**USDC milestone deployment**:
+- API: `https://uptime-arbiter-usdc-api.fly.dev` (`fly.io` app `uptime-arbiter-usdc-api`)
+- Postgres: `uptime-arbiter-usdc-db` (a new database; old SLA index rows are deliberately not reused)
+- GenLayer adjudicator: `0xC9f0fC17f29D7F4521dBef942CBE9481dB839d0D`
+- Base Sepolia USDC escrow: `0xf19027e7EA05165A44336F5A2c53f7A09B26a0F3`
 
 ## Local development
 
@@ -28,7 +29,7 @@ npm run indexer          # separate terminal — background sync loop
 The app is already deployed (see above). To redeploy after code changes:
 
 ```bash
-fly deploy --app uptime-arbiter-api
+fly deploy --app uptime-arbiter-usdc-api
 ```
 
 `release_command` runs `prisma migrate deploy` automatically, so schema
@@ -36,7 +37,7 @@ changes ship safely on every deploy. To point at a redeployed contract
 address:
 
 ```bash
-fly secrets set NEXT_PUBLIC_CONTRACT_ADDRESS="0x..." --app uptime-arbiter-api
+fly secrets set NEXT_PUBLIC_CONTRACT_ADDRESS="0x..." --app uptime-arbiter-usdc-api
 ```
 
 (Setting a secret automatically triggers a rolling redeploy — no separate

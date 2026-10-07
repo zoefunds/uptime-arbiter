@@ -10,7 +10,7 @@
 # crashed machine automatically, and a machine failing /healthz is recycled
 # before it can serve degraded traffic.
 
-app = "uptime-arbiter-api"
+app = "uptime-arbiter-usdc-api"
 primary_region = "iad"
 
 [build]
