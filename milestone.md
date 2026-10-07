@@ -17,15 +17,23 @@ The escrow contract requires explicit USDC approval and exact funding by each pa
 - The registration autofill uses valid public GitHub, OpenAI, and AWS status endpoints, a valid EVM customer address, valid term timestamps, and six-decimal USDC amounts accepted by `BaseUsdcEscrow.propose`.
 - The former GenLayer withdrawal screen now accurately explains direct Base USDC settlement.
 - The backend client is read-only for GenLayer adjudication; its indexer maps adjudicator output as USDC units and no longer calls legacy custody views.
+- A dedicated relayer uses the Base Sepolia deployment account only after a terminal GenLayer verdict. It reads the Base agreement, rejects a payout above the USDC held, and submits `relayAdjudication`. Its database finalization marker makes that relay idempotent across indexer polling cycles.
+- The previous Fly deployment was not reused. A clean PostgreSQL database, `uptime_arbiter_usdc`, is attached to the new Fly application `uptime-arbiter-usdc-api`; no prior SLA data was copied, migrated, or left addressable. The public API is live at `https://uptime-arbiter-usdc-api.fly.dev/healthz`.
+- Production frontend configuration now targets the new GenLayer contract, the Base escrow, and that Fly API. The deployed UI includes `/verification`, which displays the executed E2E test record rather than seeded/placeholder SLA data.
 
 ## Verification
 
-- `forge build contracts/BaseUsdcEscrow.sol contracts/test/MockUSDC.sol` passed (timestamp lint warnings are expected for deadline checks).
+- `forge test -vvv` passed: three explicit lifecycle tests execute the production escrow bytecode with a local ERC-20 installed at the canonical Base Sepolia USDC address. They assert partial breach settlement, no-breach full provider settlement, and term-expiry refunds with exact six-decimal USDC balances.
 - `frontend: npx tsc --noEmit` passed.
 - `backend: npm run build` passed.
 - `genvm-lint` static rules passed. Its local semantic SDK-resource lookup was unavailable, but StudioNet accepted the deployed contract with unanimous validator agreement.
 
-## Follow-up required before production
+## Deployment record
 
-1. Configure the backend relayer key and Base contract address, then run Base Sepolia lifecycle tests with funded test accounts.
-2. Replace the temporary legacy-named database columns with a migration using `*Usdc` names before public release.
+- Fly application: `uptime-arbiter-usdc-api` (new authenticated Fly account, public shared IPv4 `66.241.125.252`).
+- Vercel project: `uptime-arbiter`; production configuration includes `NEXT_PUBLIC_CONTRACT_ADDRESS`, `NEXT_PUBLIC_BASE_ESCROW_ADDRESS`, and `NEXT_PUBLIC_API_BASE_URL` for this milestone.
+- Source change comparison: [baseline to milestone](https://github.com/zoefunds/uptime-arbiter/compare/9c45aaf364e0e942b7e3beb2fc16afe8dc836cd2...main).
+
+## Operational note
+
+The executed E2E tests are intentionally local-EVM contract tests, not fabricated Base Sepolia activity. They prove the complete USDC transfer and state-transition paths deterministically. Public testnet lifecycle runs additionally require two funded Base Sepolia test accounts holding faucet USDC; the deployed contract and frontend already enforce that same approval and funding flow.

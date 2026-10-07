@@ -12,6 +12,7 @@ __pycache__/
 *.pyc
 .venv-tests/
 artifacts/
+cache/
 .pytest_cache/
 gltest.config.yaml
 video/out/

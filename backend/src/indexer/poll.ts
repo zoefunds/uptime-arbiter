@@ -119,6 +119,11 @@ async function upsertSla(slaId: string): Promise<void> {
 
 async function upsertClaim(claimId: string): Promise<void> {
   const claim = await contract.getClaim(claimId);
+  // GenLayer's optional `relayed` marker is not controlled by this service.
+  // Persist the Base transaction completion locally so a subsequent polling pass
+  // can never attempt a second settlement for the same immutable Base escrow.
+  const existing = await prisma.claim.findUnique({ where: { claimId }, select: { finalized: true } });
+  const finalized = existing?.finalized ?? Boolean(claim.relayed);
   await prisma.claim.upsert({
     where: { claimId },
     create: {
@@ -136,7 +141,7 @@ async function upsertClaim(claimId: string): Promise<void> {
       recommendedPayoutBps: Number(claim.payout_bps ?? 0),
       payoutWei: toStr(claim.payout_usdc),
       resolvedAt: toStr(claim.resolved_at),
-      challengeDeadlineTs: BigInt(0), challengeCount: 0, activeChallengeId: "", isChallenged: false, finalized: Boolean(claim.relayed),
+      challengeDeadlineTs: BigInt(0), challengeCount: 0, activeChallengeId: "", isChallenged: false, finalized,
     },
     update: {
       status: toStr(claim.status),
@@ -145,11 +150,11 @@ async function upsertClaim(claimId: string): Promise<void> {
       recommendedPayoutBps: Number(claim.payout_bps ?? 0),
       payoutWei: toStr(claim.payout_usdc),
       resolvedAt: toStr(claim.resolved_at),
-      challengeDeadlineTs: BigInt(0), challengeCount: 0, activeChallengeId: "", isChallenged: false, finalized: Boolean(claim.relayed),
+      challengeDeadlineTs: BigInt(0), challengeCount: 0, activeChallengeId: "", isChallenged: false, finalized,
     },
   });
   const isResolved = ["RESOLVED_BREACH", "RESOLVED_PARTIAL", "RESOLVED_NO_BREACH"].includes(toStr(claim.status));
-  if (isResolved && !Boolean(claim.relayed)) {
+  if (isResolved && !finalized) {
     const sla = await contract.getSla(toStr(claim.sla_id));
     const txHash = await relayResolvedClaim({
       baseAgreementId: toStr(sla.base_agreement_id),
