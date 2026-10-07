@@ -12,7 +12,6 @@ const NAV = [
   { href: "/register", label: "Register SLA" },
   { href: "/claims", label: "Adjudication Room" },
   { href: "/vault", label: "Vault & Settlements" },
-  { href: "/verification", label: "Verification" },
 ];
 
 export function SiteHeader() {
