@@ -76,4 +76,4 @@ from presenting GenLayer as an asset ledger.
 
 ## Source comparison
 
-[Latest milestone update](https://github.com/zoefunds/uptime-arbiter/compare/657e906b2fae594ee6d2e075d93a844b72094ce3...main)
+[Milestone implementation comparison](https://github.com/zoefunds/uptime-arbiter/compare/389f797...ffbc69978d3b8abf99307c9223650e0b4c882783)
