@@ -12,8 +12,8 @@ custodies user USDC. Base Sepolia's escrow contract is the only asset layer.
 | Fly Postgres | `uptime-arbiter-usdc-db` |
 | API | `https://uptime-arbiter-usdc-api.fly.dev` |
 | Current release | 21 |
-| Final GenLayer contract | `0xcACB25F194b0821A74B3978B67acD7719c7E4F5C` |
-| Base escrow | `0x5b15a8b6c7BD8C3fB104332A61dA2a5912290794` |
+| Final GenLayer contract | `0x1798573a1C99b5250881666999d8C3486E5cA4f1` |
+| Base escrow | `0x9656B5a51E94C7bDE57c3370420d617F7Cc2bD98` |
 
 `fly.toml` runs two always-on process groups from the same image:
 

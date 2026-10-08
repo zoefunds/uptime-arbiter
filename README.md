@@ -11,12 +11,12 @@ Uptime Arbiter is an SLA protocol with a strict two-chain boundary:
 | Component | Production value |
 | --- | --- |
 | Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| Base escrow | `0x5b15a8b6c7BD8C3fB104332A61dA2a5912290794` |
-| GenLayer adjudicator | `0xcACB25F194b0821A74B3978B67acD7719c7E4F5C` |
+| Base escrow | `0x9656B5a51E94C7bDE57c3370420d617F7Cc2bD98` |
+| GenLayer adjudicator | `0x1798573a1C99b5250881666999d8C3486E5cA4f1` |
 | Web app | [uptime-arbiter.vercel.app](https://uptime-arbiter.vercel.app) |
 | API health check | [uptime-arbiter-usdc-api.fly.dev/healthz](https://uptime-arbiter-usdc-api.fly.dev/healthz) |
 
-`BaseUsdcEscrow.sol` was deployed in Base transaction `0xa76696958048d64daad02eed5ce3d48ba5f890e80872c071beb66e93a6a90b88`; the final GenLayer adjudicator deployment transaction is `0xe4ebfdd5dd2d3ac9dc1b8ecb8985a8a2e021c667733cd99db396ba583a718ee6`.
+The current Base escrow deployment transaction is `0xc565910a7461dec8f8d3f8052358c63df055f78989155d7d03bdf638694c7648`; the current GenLayer adjudicator deployment transaction is `0x50d2071760a3840d28490a0a03dbbe17c54dfc489dfa8c58b3c28910db8762ee`.
 
 ## Registration and settlement lifecycle
 

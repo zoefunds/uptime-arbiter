@@ -10,12 +10,12 @@ Uptime Arbiter now has a strict split trust boundary:
 
 ## Final deployed contracts
 
-- Base Sepolia escrow: `0x5b15a8b6c7BD8C3fB104332A61dA2a5912290794`
-  - deployment: `0xa76696958048d64daad02eed5ce3d48ba5f890e80872c071beb66e93a6a90b88`
-- Final GenLayer adjudicator: `0xcACB25F194b0821A74B3978B67acD7719c7E4F5C`
-  - deployment: `0xe4ebfdd5dd2d3ac9dc1b8ecb8985a8a2e021c667733cd99db396ba583a718ee6`
+- Base Sepolia escrow: `0x9656B5a51E94C7bDE57c3370420d617F7Cc2bD98`
+  - deployment: `0xc565910a7461dec8f8d3f8052358c63df055f78989155d7d03bdf638694c7648`
+- Final GenLayer adjudicator: `0x1798573a1C99b5250881666999d8C3486E5cA4f1`
+  - deployment: `0x50d2071760a3840d28490a0a03dbbe17c54dfc489dfa8c58b3c28910db8762ee`
 
-The GenLayer contract normalizes browser-supplied customer addresses into GenLayer `Address` values and converts the wire-level 256-bit Base transaction value back to a canonical 32-byte `0x…` receipt. Provider funding is recorded atomically during SLA registration.
+The GenLayer contract normalizes browser-supplied customer addresses into GenLayer `Address` values and converts the wire-level 256-bit Base transaction value back to a canonical 32-byte `0x…` receipt. Provider funding is recorded atomically during SLA registration. This clean deployment intentionally starts with no SLAs or claims.
 
 ## Cross-chain confirmation model
 
@@ -47,8 +47,8 @@ The backend performs a second bounded post-write read-back: it searches final Ge
 - `forge test -vvv`: three escrow lifecycle tests passed (partial breach, no breach, and expiry refund).
 - `frontend: npx tsc --noEmit`: passed during the production Vercel build.
 - `backend: npm run build`: run before final Fly deployment.
-- Live GenLayer readback verified the final-contract `SLA-1` record and its Base provider-funding receipt.
-- Live backend `GET /slas?limit=10` returned only final-contract registry data after database cleanup.
+- The fresh Base and GenLayer contracts were deployed without registering, funding, or settling any SLA.
+- The backend cache was truncated after the address switch; read-only production verification returned an empty registry and a healthy API.
 
 ## Source comparison
 
