@@ -26,9 +26,9 @@ const SAMPLE_VALUES = {
   label: "GitHub Actions Runner Fleet (us-east-1)",
   coveredService: "GitHub Actions hosted runners (us-east-1)",
   targetUptimePct: "99.95",
-  penaltyRate: "250",
-  escrow: "50000",
-  bond: "5000",
+  penaltyRate: "0.01",
+  escrow: "1",
+  bond: "0.2",
   challengeBond: "2500",
   tolerance: "2",
   challengeWindowHours: "72",
@@ -41,7 +41,7 @@ const SAMPLE_VALUES = {
 export default function RegisterSlaPage() {
   const { address } = useAccount();
   const router = useRouter();
-  const { send: sendBase, nextBaseAgreementId, waitForBaseReceipt, pending: basePending, error: baseError, txHash } = useBaseUsdcWrite();
+  const { send: sendBase, approveUsdc, nextBaseAgreementId, waitForBaseReceipt, pending: basePending, error: baseError, txHash } = useBaseUsdcWrite();
   const { send: sendGenlayer, pending: adjudicationPending, error: adjudicationError } = useGenlayerWrite();
   const pending = basePending || adjudicationPending;
   const error = baseError ?? adjudicationError;
@@ -61,6 +61,7 @@ export default function RegisterSlaPage() {
   const [sources, setSources] = useState(["", "", ""]);
   const [exclusionTerms, setExclusionTerms] = useState("");
   const [done, setDone] = useState(false);
+  const [progress, setProgress] = useState("");
 
   // Mirrors the contract's own derivation exactly (propose_sla):
   // grace_minutes = term_minutes * (10000 - target_uptime_bps) // 10000.
@@ -113,27 +114,40 @@ export default function RegisterSlaPage() {
       return;
     }
 
-    // Capital agreement is created on Base Sepolia first. The subsequent
-    // GenLayer registration only binds evidence and adjudication metadata.
-    const now = Math.floor(Date.now() / 1000);
-    const baseAgreementId = await nextBaseAgreementId();
-    const txId = await sendBase("propose", [customer, usdcToUnits(escrow), usdcToUnits(bond), BigInt(now + Number(registrationTtlDays) * DAY), BigInt(now + Number(termDays) * DAY)]);
+    try {
+      // The Base Sepolia path is deliberately first and mandatory: propose
+      // the agreement, approve official USDC, then pull the provider's stake
+      // into the Base escrow. Only that confirmed agreement is registered on
+      // GenLayer for adjudication.
+      const now = Math.floor(Date.now() / 1000);
+      const baseAgreementId = await nextBaseAgreementId();
+      setProgress("Confirm the Base Sepolia SLA proposal in your wallet…");
+      const proposalTx = await sendBase("propose", [customer, usdcToUnits(escrow), usdcToUnits(bond), BigInt(now + Number(registrationTtlDays) * DAY), BigInt(now + Number(termDays) * DAY)]);
+      if (!proposalTx) throw new Error("Base Sepolia proposal was not submitted");
+      await waitForBaseReceipt(proposalTx);
 
-    if (txId) {
-      // Do not create an orphan adjudication record: GenLayer registration
-      // happens only after Base confirms the exact agreement ID.
-      await waitForBaseReceipt(txId);
+      setProgress("Confirm USDC approval for the Base escrow…");
+      const approvalTx = await approveUsdc(usdcToUnits(escrow));
+      await waitForBaseReceipt(approvalTx);
+
+      setProgress("Confirm the provider USDC escrow deposit on Base Sepolia…");
+      const fundingTx = await sendBase("fundProvider", [BigInt(baseAgreementId)]);
+      if (!fundingTx) throw new Error("Provider USDC escrow deposit was not submitted");
+      await waitForBaseReceipt(fundingTx);
+
+      setProgress("Registering the adjudication terms on GenLayer…");
       const adjudicationTx = await sendGenlayer("register_adjudication", [
         Number(baseAgreementId), customer, label || "Unlabeled SLA", coveredService.trim(),
         Math.round(Number(targetUptimePct) * 100), usdcToUnits(penaltyRate).toString(),
         usdcToUnits(escrow).toString(), now, now + Number(termDays) * DAY, cleanSources, exclusionTerms.trim(),
       ]);
-      if (!adjudicationTx) return;
-    }
-
-    if (txId) {
+      if (!adjudicationTx) throw new Error("GenLayer adjudication registration was not submitted");
       setDone(true);
+      setProgress("Base USDC is escrowed and the linked GenLayer SLA is registered.");
       setTimeout(() => router.push("/registry"), 2500);
+    } catch (cause) {
+      setProgress("");
+      alert(cause instanceof Error ? cause.message : String(cause));
     }
   }
 
@@ -172,6 +186,7 @@ export default function RegisterSlaPage() {
       </div>
 
       {error && <div className="rounded bg-error/10 px-4 py-3 font-mono text-xs text-error">{error}</div>}
+      {progress && <div className="rounded bg-primary/10 px-4 py-3 font-mono text-xs text-primary">{progress}</div>}
       {done && (
         <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">
           Base Sepolia escrow proposed ({txHash}) and its GenLayer adjudication agreement was registered.

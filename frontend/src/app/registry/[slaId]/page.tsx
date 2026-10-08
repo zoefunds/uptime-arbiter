@@ -43,7 +43,7 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
     const hash = await sendBase("fundProvider", [BigInt(sla.baseAgreementId)]);
     if (!hash) return;
     await waitForBaseReceipt(hash);
-    await send("record_base_funding", [sla.slaId, "PROVIDER", hash]);
+    await send("record_base_funding", [sla.slaId, "PROVIDER", BigInt(hash)]);
     refresh();
   }
 
@@ -53,7 +53,7 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
     const hash = await sendBase("fundCustomer", [BigInt(sla.baseAgreementId)]);
     if (!hash) return;
     await waitForBaseReceipt(hash);
-    await send("record_base_funding", [sla.slaId, "CUSTOMER", hash]);
+    await send("record_base_funding", [sla.slaId, "CUSTOMER", BigInt(hash)]);
     refresh();
   }
 

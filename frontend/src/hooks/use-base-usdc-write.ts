@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useAccount } from "wagmi";
-import { BASE_ESCROW_ADDRESS, BASE_SEPOLIA_USDC, baseEscrowAbi, nextBaseAgreementId, usdcAbi, waitForBaseReceipt, writeBaseContract } from "@/lib/base";
+import { BASE_ESCROW_ADDRESS, BASE_SEPOLIA_USDC, baseEscrowAbi, ensureBaseSepolia, nextBaseAgreementId, usdcAbi, waitForBaseReceipt, writeBaseContract } from "@/lib/base";
 
 export function useBaseUsdcWrite() {
   const { address, connector } = useAccount();
@@ -14,6 +14,7 @@ export function useBaseUsdcWrite() {
     setPending(true); setError(null); setTxHash(null);
     try {
       const provider = await connector.getProvider();
+      await ensureBaseSepolia(provider);
       const hash = await writeBaseContract(provider, address, BASE_ESCROW_ADDRESS, baseEscrowAbi, method, args);
       setTxHash(hash); return hash;
     } catch (cause) {
@@ -23,6 +24,7 @@ export function useBaseUsdcWrite() {
   const approveUsdc = useCallback(async (amount: bigint) => {
     if (!address || !connector) throw new Error("Connect a Base Sepolia wallet first");
     const provider = await connector.getProvider();
+    await ensureBaseSepolia(provider);
     return writeBaseContract(provider, address, BASE_SEPOLIA_USDC, usdcAbi, "approve", [BASE_ESCROW_ADDRESS, amount]);
   }, [address, connector]);
   return { send, approveUsdc, nextBaseAgreementId, waitForBaseReceipt, pending, error, txHash, baseEscrowAddress: BASE_ESCROW_ADDRESS };

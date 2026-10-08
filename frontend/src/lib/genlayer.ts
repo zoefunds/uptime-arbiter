@@ -6,6 +6,35 @@ import type { CalldataEncodable } from "genlayer-js/types";
 export const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
   "") as `0x${string}`;
 
+type Eip1193Provider = { request(args: { method: string; params?: unknown[] }): Promise<unknown> };
+const STUDIONET_CHAIN_ID_HEX = `0x${studionet.id.toString(16)}`;
+
+/** Switch the connected wallet before a signed GenLayer transaction. */
+async function ensureStudioNet(provider: unknown) {
+  const wallet = provider as Eip1193Provider;
+  if (!wallet?.request) throw new Error("Your connected wallet does not support GenLayer transactions");
+  const chainId = async () => String(await wallet.request({ method: "eth_chainId" })).toLowerCase();
+  if (await chainId() === STUDIONET_CHAIN_ID_HEX) return;
+  try {
+    await wallet.request({ method: "wallet_switchEthereumChain", params: [{ chainId: STUDIONET_CHAIN_ID_HEX }] });
+  } catch {
+    // Add StudioNet below if the wallet has not seen it before.
+  }
+  if (await chainId() === STUDIONET_CHAIN_ID_HEX) return;
+  await wallet.request({
+    method: "wallet_addEthereumChain",
+    params: [{
+      chainId: STUDIONET_CHAIN_ID_HEX,
+      chainName: studionet.name,
+      nativeCurrency: studionet.nativeCurrency,
+      rpcUrls: studionet.rpcUrls.default.http,
+      blockExplorerUrls: studionet.blockExplorers?.default ? [studionet.blockExplorers.default.url] : undefined,
+    }],
+  });
+  await wallet.request({ method: "wallet_switchEthereumChain", params: [{ chainId: STUDIONET_CHAIN_ID_HEX }] });
+  if (await chainId() !== STUDIONET_CHAIN_ID_HEX) throw new Error("Please switch your wallet to GenLayer StudioNet to continue");
+}
+
 /**
  * Every write in this app (lock_provider_escrow, co_sign_and_lock_bond,
  * submit_claim, evaluate_claim, file_challenge, resolve_challenge,
@@ -38,6 +67,7 @@ export async function writeContractMethod(
   args: CalldataEncodable[] = [],
   value?: bigint,
 ) {
+  await ensureStudioNet(provider);
   const client = getGenlayerClient(provider, account);
 
   const txId = await client.writeContract({
