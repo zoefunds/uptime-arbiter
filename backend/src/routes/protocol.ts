@@ -27,13 +27,29 @@ async function confirmRegistration(baseAgreementId: string, provider: string, pr
       if (text(sla.base_agreement_id) === baseAgreementId
         && text(sla.provider).toLowerCase() === normalizedProvider
         && text(sla.provider_base_funding_tx).toLowerCase() === normalizedReceipt) {
-        await upsertSla(slaId);
+        await upsertSla(slaId, sla);
         return slaId;
       }
     }
     await pause(2_000);
   }
   throw new Error("GenLayer did not persist the linked adjudication record yet");
+}
+
+async function confirmFunding(slaId: string, role: "PROVIDER" | "CUSTOMER", baseFundingTx: string) {
+  const field = role === "PROVIDER" ? "provider_base_funding_tx" : "customer_base_funding_tx";
+  const expected = baseFundingTx.toLowerCase();
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const sla = await contract.getSlaPostWrite(slaId);
+    if (text(sla[field]).toLowerCase() === expected) {
+      await upsertSla(slaId, sla);
+      const providerFunded = text(sla.provider_base_funding_tx) !== "";
+      const customerSigned = text(sla.customer_base_funding_tx) !== "";
+      return { status: providerFunded && customerSigned ? "ACTIVE" : "PROPOSED" };
+    }
+    await pause(1_500);
+  }
+  throw new Error("GenLayer did not persist the Base funding receipt yet");
 }
 
 /**
@@ -108,6 +124,22 @@ export async function protocolRoutes(app: FastifyInstance) {
       request.log.warn({ cause }, "registration confirmation not found yet");
       return reply.code(409).send({
         error: "Base USDC was confirmed, but GenLayer has not yet produced the matching adjudication record. Do not pay again; refresh this page shortly.",
+      });
+    }
+  });
+
+  app.post("/slas/:slaId/confirm-funding", async (request, reply) => {
+    const { slaId } = request.params as { slaId: string };
+    const body = request.body as { role?: "PROVIDER" | "CUSTOMER"; baseFundingTx?: string };
+    if ((body.role !== "PROVIDER" && body.role !== "CUSTOMER") || !body.baseFundingTx) {
+      return reply.code(400).send({ error: "role and baseFundingTx are required" });
+    }
+    try {
+      return await within(confirmFunding(slaId, body.role, body.baseFundingTx), 15_000);
+    } catch (cause) {
+      request.log.warn({ cause, slaId, role: body.role }, "funding confirmation not found yet");
+      return reply.code(409).send({
+        error: "Base funding is confirmed, but GenLayer has not yet persisted its receipt. Do not pay again; refresh shortly.",
       });
     }
   });

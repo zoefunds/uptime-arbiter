@@ -24,13 +24,14 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
   const { data, isLoading, isError } = useQuery({
     queryKey: ["claim", claimId],
     queryFn: () => api.getClaim(claimId),
-    refetchInterval: 8_000,
+    refetchInterval: 3_000,
   });
 
   const slaQuery = useQuery({
     queryKey: ["sla", data?.claim.slaId],
     queryFn: () => api.getSla(data!.claim.slaId),
     enabled: !!data?.claim.slaId,
+    refetchInterval: 3_000,
   });
 
   if (isLoading) return <div className="px-4 py-16 lg:px-6"><LoadingState /></div>;
@@ -42,7 +43,13 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
   const isParty = sla && address && (address.toLowerCase() === sla.provider.toLowerCase() || address.toLowerCase() === sla.customer.toLowerCase());
 
   async function refresh() {
-    await queryClient.invalidateQueries({ queryKey: ["claim", claimId] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["claim", claimId] }),
+      queryClient.invalidateQueries({ queryKey: ["claims"] }),
+      queryClient.invalidateQueries({ queryKey: ["sla"] }),
+      queryClient.invalidateQueries({ queryKey: ["slas"] }),
+      queryClient.invalidateQueries({ queryKey: ["protocol-stats"] }),
+    ]);
   }
 
   async function handleEvaluate() {

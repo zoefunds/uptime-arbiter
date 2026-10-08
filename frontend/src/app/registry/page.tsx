@@ -20,6 +20,7 @@ export default function RegistryPage() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["slas", status],
     queryFn: () => api.listSlas({ status }),
+    refetchInterval: 3_000,
   });
 
   return (

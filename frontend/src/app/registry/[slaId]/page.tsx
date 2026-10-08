@@ -19,18 +19,19 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
   const { send: sendBase, approveUsdc, waitForBaseReceipt, pending: basePending, error: baseError, txHash: baseTxHash, progress: baseProgress } = useBaseUsdcWrite();
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
+  const [activationMessage, setActivationMessage] = useState("");
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["sla", slaId],
     queryFn: () => api.getSla(slaId),
-    refetchInterval: 10_000,
+    refetchInterval: 3_000,
   });
 
   const { data: baseAgreement } = useQuery({
     queryKey: ["base-agreement", data?.sla.baseAgreementId],
     queryFn: () => readBaseAgreement(BigInt(data!.sla.baseAgreementId)),
     enabled: Boolean(data?.sla.baseAgreementId),
-    refetchInterval: 15_000,
+    refetchInterval: 3_000,
   });
 
   if (isLoading) return <div className="px-4 py-16 lg:px-6"><LoadingState /></div>;
@@ -43,7 +44,12 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
   const now = Math.floor(Date.now() / 1000);
 
   async function refresh() {
-    await queryClient.invalidateQueries({ queryKey: ["sla", slaId] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["sla", slaId] }),
+      queryClient.invalidateQueries({ queryKey: ["slas"] }),
+      queryClient.invalidateQueries({ queryKey: ["claims"] }),
+      queryClient.invalidateQueries({ queryKey: ["protocol-stats"] }),
+    ]);
   }
 
   async function handleLockEscrow() {
@@ -52,8 +58,13 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
     const hash = await sendBase("fundProvider", [BigInt(sla.baseAgreementId)]);
     if (!hash) return;
     await waitForBaseReceipt(hash);
-    await send("record_base_funding", [sla.slaId, "PROVIDER", BigInt(hash)]);
-    refresh();
+    setActivationMessage("Recording the Base provider escrow receipt on GenLayer…");
+    const receiptTx = await send("record_base_funding", [sla.slaId, "PROVIDER", BigInt(hash)]);
+    if (!receiptTx) return;
+    setActivationMessage("Confirming the persisted funding receipt and refreshing the SLA state…");
+    const confirmation = await api.confirmFunding(sla.slaId, { role: "PROVIDER", baseFundingTx: hash });
+    setActivationMessage(confirmation.status === "ACTIVE" ? "Escrow is active on Base and GenLayer." : "Provider escrow confirmed; awaiting the customer bond.");
+    await refresh();
   }
 
   async function handleCoSign() {
@@ -66,8 +77,13 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
     const hash = await sendBase("fundCustomer", [BigInt(sla.baseAgreementId)]);
     if (!hash) return;
     await waitForBaseReceipt(hash);
-    await send("record_base_funding", [sla.slaId, "CUSTOMER", BigInt(hash)]);
-    refresh();
+    setActivationMessage("Recording the Base customer bond receipt on GenLayer…");
+    const receiptTx = await send("record_base_funding", [sla.slaId, "CUSTOMER", BigInt(hash)]);
+    if (!receiptTx) return;
+    setActivationMessage("Confirming the persisted funding receipt and activating the SLA…");
+    const confirmation = await api.confirmFunding(sla.slaId, { role: "CUSTOMER", baseFundingTx: hash });
+    setActivationMessage(confirmation.status === "ACTIVE" ? "Escrow is active on Base and GenLayer." : "Customer bond confirmed; awaiting provider escrow.");
+    await refresh();
   }
 
   async function handleSubmitClaim() {
@@ -94,6 +110,7 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
         <div className="rounded bg-error/10 px-4 py-3 font-mono text-xs text-error">{writeError}</div>
       )}
       {baseError && <div className="rounded bg-error/10 px-4 py-3 font-mono text-xs text-error">{baseError}</div>}
+      {activationMessage && <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">{activationMessage}</div>}
       {writeWarning && (
         <div className="rounded bg-tertiary/10 px-4 py-3 font-mono text-xs text-tertiary">{writeWarning}</div>
       )}

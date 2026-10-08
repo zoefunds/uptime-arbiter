@@ -65,8 +65,8 @@ function toBigInt(v: unknown): bigint {
 }
 
 /** Used by the post-write confirmation route as well as the background poller. */
-export async function upsertSla(slaId: string): Promise<void> {
-  const sla = await contract.getSla(slaId);
+export async function upsertSla(slaId: string, knownSla?: Record<string, unknown>): Promise<void> {
+  const sla = knownSla ?? await contract.getSla(slaId);
   const providerFunded = toStr(sla.provider_base_funding_tx) !== "";
   const customerSigned = toStr(sla.customer_base_funding_tx) !== "";
   // The GenLayer contract records funding receipts but does not custody

@@ -8,7 +8,7 @@ export function StatsRibbon() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["protocol-stats"],
     queryFn: () => api.protocolStats(),
-    refetchInterval: 20_000,
+    refetchInterval: 3_000,
   });
 
   const cells = [

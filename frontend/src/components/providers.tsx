@@ -7,7 +7,18 @@ import { createAppKit } from "@reown/appkit/react";
 import { wagmiAdapter, reownProjectId } from "@/lib/wagmi";
 import { baseSepolia } from "viem/chains";
 
-const queryClient = new QueryClient();
+// Every protocol view is live data.  Keep queries fresh when the user returns
+// to the tab; individual screens set their cadence according to the data they
+// render.  Mutations additionally invalidate the affected queries immediately.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      staleTime: 0,
+    },
+  },
+});
 
 let appKitInitialized = false;
 

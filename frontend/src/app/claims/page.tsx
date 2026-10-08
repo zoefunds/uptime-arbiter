@@ -21,7 +21,7 @@ export default function ClaimsPage() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["claims", status],
     queryFn: () => api.listClaims({ status }),
-    refetchInterval: 10_000,
+    refetchInterval: 3_000,
   });
 
   return (
