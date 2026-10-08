@@ -35,10 +35,28 @@ The register page does not treat a wallet popup as proof of an SLA:
 4. It calls the backend's bounded confirmation endpoint. Success appears only
    after the final GenLayer SLA matching all those values is visible.
 
-If Base money has been confirmed but GenLayer indexing is delayed, the form is
-disabled and tells the user not to retry or pay again. This prevents accidental
-duplicate escrow deposits. Customer bond funding follows the same cross-chain
-principle from the SLA page: Base transfer first, then GenLayer receipt record.
+If Base money has been confirmed but GenLayer persistence is delayed, the form
+is disabled and tells the user not to retry or pay again. This prevents
+accidental duplicate escrow deposits. Customer bond funding follows the same
+cross-chain principle from the SLA page: Base transfer first, GenLayer receipt
+record second, then a bounded backend read-back that immediately refreshes the
+SLA to `PROPOSED` or `ACTIVE`.
+
+## Live updates
+
+All live data surfaces use TanStack Query with a three-second polling cadence:
+the landing-page protocol ribbon, SLA registry, SLA detail, Base agreement
+state, claims list, and claim detail. Queries also refetch when the browser
+regains focus or reconnects. A successful user action invalidates every
+affected query family (detail, list, claims, and statistics) so the next read
+starts immediately rather than waiting for the next cadence. The ribbon shows
+its most recent refresh time; a dash while the first request is in flight is a
+loading state, not a protocol value.
+
+The production statistic values are backend aggregates of the GenLayer mirror
+and Base funding reads. They are not seeded test results and should be treated
+as a live operational view, with Base Sepolia remaining the monetary source of
+truth.
 
 ## Pages
 
@@ -48,7 +66,7 @@ principle from the SLA page: Base transfer first, then GenLayer receipt record.
   adjudication registration. “Fill Sample Data” uses real public GitHub,
   OpenAI, and AWS status endpoints with contract-valid terms.
 - `/claims` and `/claims/[claimId]`: adjudication/claim status.
-- `/vault`: Base settlement view.
+- `/vault`: Base settlement and verdict-relay view.
 - `/verification`: redirects to `/registry`; test cards are deliberately not
   presented as SLAs.
 
@@ -62,8 +80,9 @@ npx tsc --noEmit
 ```
 
 Set `NEXT_PUBLIC_REOWN_PROJECT_ID`, `NEXT_PUBLIC_API_BASE_URL`, and the public
-network values in `.env.local`. The registry, claims, and vault pages require a
-running backend for indexed data.
+network values in `.env.local`. The registry, claims, landing statistics, and
+vault pages require a running backend for indexed data. Do not put a private
+key in any `NEXT_PUBLIC_*` variable.
 
 ## Deployment
 

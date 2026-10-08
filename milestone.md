@@ -15,7 +15,7 @@ Uptime Arbiter now has a strict split trust boundary:
 - Final GenLayer adjudicator: `0x1798573a1C99b5250881666999d8C3486E5cA4f1`
   - deployment: `0x50d2071760a3840d28490a0a03dbbe17c54dfc489dfa8c58b3c28910db8762ee`
 
-The GenLayer contract normalizes browser-supplied customer addresses into GenLayer `Address` values and converts the wire-level 256-bit Base transaction value back to a canonical 32-byte `0x…` receipt. Provider funding is recorded atomically during SLA registration. This clean deployment intentionally starts with no SLAs or claims.
+The GenLayer contract normalizes browser-supplied customer addresses into GenLayer `Address` values and converts the wire-level 256-bit Base transaction value back to a canonical 32-byte `0x…` receipt. Provider funding is recorded atomically during SLA registration. The initial cache was intentionally empty after the address migration; any current registry entry is an ordinary user-created SLA on these final contracts, not seeded test data.
 
 ## Cross-chain confirmation model
 
@@ -24,6 +24,30 @@ The registry displays only normal SLAs from the final GenLayer contract—never 
 For every user-created SLA, the frontend now derives the Base agreement ID from the mined `AgreementProposed` event rather than guessing the next counter. It then reads the Base escrow until it proves the exact provider, customer, USDC amounts, and provider deposit. Only after that proof does it switch to StudioNet and submit `register_adjudication` with the real Base funding transaction receipt.
 
 The backend performs a second bounded post-write read-back: it searches final GenLayer state for the same Base agreement ID, provider, and funding receipt, mirrors the matching SLA into Postgres, and returns its real SLA ID. A slow StudioNet response produces a clear recovery message and disables re-submission; it never encourages a duplicate USDC deposit.
+
+Provider and customer funding receive the same protection after registration.
+The Base transaction is mined first; the user then signs GenLayer
+`record_base_funding`. The backend's `confirm-funding` endpoint reads the
+persisted SLA directly, verifies the exact Base receipt in the correct role,
+updates the cache, and returns the resulting `PROPOSED` or `ACTIVE` lifecycle
+state. The frontend invalidates the SLA detail, registry, claims, and
+statistics queries at once.
+
+### Live UI synchronization
+
+All live protocol views poll on a three-second cadence and refetch on browser
+focus or network reconnect. This covers the landing statistic ribbon, registry,
+SLA details, Base-agreement display, claims list, and claim detail. Post-write
+confirmations provide immediate read-after-write behavior for the payment paths;
+ordinary background polling remains a resilience mechanism rather than the
+only way a new status becomes visible.
+
+The landing statistic ribbon is derived from the real mirrored state: total
+registered SLAs, active SLAs, submitted claims, confirmed/partial breaches,
+filed challenges, and Base USDC held by active agreements. While indexing an
+SLA, the backend reads the Base escrow agreement and persists the configured
+escrow/bond as well as actual provider/customer deposits. This prevents the UI
+from presenting GenLayer as an asset ledger.
 
 ## Backend and frontend deployment
 
@@ -44,12 +68,12 @@ The backend performs a second bounded post-write read-back: it searches final Ge
 
 ## Validation performed
 
-- `forge test -vvv`: three escrow lifecycle tests passed (partial breach, no breach, and expiry refund).
-- `frontend: npx tsc --noEmit`: passed during the production Vercel build.
-- `backend: npm run build`: run before final Fly deployment.
-- The fresh Base and GenLayer contracts were deployed without registering, funding, or settling any SLA.
-- The backend cache was truncated after the address switch; read-only production verification returned an empty registry and a healthy API.
+- `frontend: npx tsc --noEmit`: passes for the live-refresh and statistic UI.
+- `backend: npm run build`: passes for the Base-funding mirror and live-statistic API.
+- The final Base and GenLayer contracts were deployed without any automated E2E funding or settlement run, per instruction.
+- The backend cache was truncated after the address switch; the previous-contract records were removed without deleting any on-chain history.
+- Production `/protocol/stats` now returns live counts and Base-held USDC from the final-contract mirror rather than placeholder statistics.
 
 ## Source comparison
 
-[Latest milestone update](https://github.com/zoefunds/uptime-arbiter/compare/548fa69...main)
+[Latest milestone update](https://github.com/zoefunds/uptime-arbiter/compare/657e906b2fae594ee6d2e075d93a844b72094ce3...main)

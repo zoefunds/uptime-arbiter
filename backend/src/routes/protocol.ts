@@ -71,9 +71,32 @@ export async function protocolRoutes(app: FastifyInstance) {
   });
 
   app.get("/protocol/stats", async () => {
-    // No monetary state is held on GenLayer. Base escrow totals are indexed
-    // separately by the relay service once an escrow deployment is configured.
-    return { total_active_escrow_usdc: "0", note: "Base Sepolia escrow totals pending indexer configuration" };
+    const [activeSlas, totalSlas, totalClaims, breachClaims, totalChallenges] = await Promise.all([
+      prisma.slaAgreement.findMany({
+        where: { status: "ACTIVE" },
+        select: { escrowDeposited: true, bondDeposited: true },
+      }),
+      prisma.slaAgreement.count(),
+      prisma.claim.count(),
+      prisma.claim.count({ where: { status: { in: ["RESOLVED_BREACH", "RESOLVED_PARTIAL"] } } }),
+      prisma.challenge.count(),
+    ]);
+    const held = activeSlas.reduce((total, sla) => {
+      try {
+        return total + BigInt(sla.escrowDeposited) + BigInt(sla.bondDeposited);
+      } catch {
+        return total;
+      }
+    }, 0n);
+    return {
+      total_active_escrow_usdc: held.toString(),
+      total_slas_registered: totalSlas,
+      total_slas_active: activeSlas.length,
+      total_claims_submitted: totalClaims,
+      total_claims_resolved_breach: breachClaims,
+      total_challenges_filed: totalChallenges,
+      updated_at: new Date().toISOString(),
+    };
   });
 
   app.get("/slas", async (request) => {

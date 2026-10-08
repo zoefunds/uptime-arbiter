@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { formatUsdc } from "@/lib/format";
 
 export function StatsRibbon() {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, dataUpdatedAt } = useQuery({
     queryKey: ["protocol-stats"],
     queryFn: () => api.protocolStats(),
     refetchInterval: 3_000,
@@ -28,6 +28,10 @@ export function StatsRibbon() {
             Live stats temporarily unavailable — backend indexer may be starting up.
           </p>
         ) : (
+          <>
+          <div className="mb-3 text-right font-mono text-[10px] text-on-surface-variant">
+            {dataUpdatedAt ? `Live • refreshed ${new Date(dataUpdatedAt).toLocaleTimeString()}` : "Connecting to live protocol data…"}
+          </div>
           <div className="grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-6">
             {cells.map((cell) => (
               <div key={cell.label} className="flex flex-col">
@@ -40,6 +44,7 @@ export function StatsRibbon() {
               </div>
             ))}
           </div>
+          </>
         )}
       </div>
     </section>

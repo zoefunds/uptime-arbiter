@@ -13,6 +13,26 @@ const publicClient = createPublicClient({ chain: baseSepolia, transport: http(co
 const walletClient = createWalletClient({ account, chain: baseSepolia, transport: http(config.base.rpcUrl) });
 const escrow = config.base.escrowAddress as Address;
 
+/**
+ * Read the value that is actually locked in the Base escrow.  The GenLayer
+ * contract intentionally never holds USDC, so this is the only truthful
+ * source for registry funding amounts and protocol capital statistics.
+ */
+export async function readBaseAgreementFunding(baseAgreementId: string) {
+  const agreement = await publicClient.readContract({
+    address: escrow,
+    abi: escrowAbi,
+    functionName: "agreements",
+    args: [BigInt(baseAgreementId)],
+  });
+  return {
+    escrowUsdc: agreement[2],
+    customerBondUsdc: agreement[3],
+    providerDeposited: agreement[4],
+    customerDeposited: agreement[5],
+  };
+}
+
 /** Relay only a final GenLayer result. The Base contract independently
  * checks that payout + refund equals USDC held, preventing value creation. */
 export async function relayResolvedClaim(args: { baseAgreementId: string; claimId: string; payoutUsdc: string; verdict: string }) {

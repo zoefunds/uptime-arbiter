@@ -2,6 +2,7 @@ import { prisma } from "../db/client.js";
 import { contract } from "../genlayer/client.js";
 import { config } from "../config.js";
 import { relayResolvedClaim } from "../base/relayer.js";
+import { readBaseAgreementFunding } from "../base/relayer.js";
 
 /**
  * Uptime Arbiter indexer.
@@ -67,6 +68,16 @@ function toBigInt(v: unknown): bigint {
 /** Used by the post-write confirmation route as well as the background poller. */
 export async function upsertSla(slaId: string, knownSla?: Record<string, unknown>): Promise<void> {
   const sla = knownSla ?? await contract.getSla(slaId);
+  // Keep monetary display data anchored to Base Sepolia. If the Base RPC is
+  // temporarily unavailable, retain the prior cached amounts rather than
+  // inventing zero balances.
+  let baseFunding: Awaited<ReturnType<typeof readBaseAgreementFunding>> | undefined;
+  try {
+    const baseAgreementId = toStr(sla.base_agreement_id);
+    if (baseAgreementId) baseFunding = await readBaseAgreementFunding(baseAgreementId);
+  } catch (error) {
+    console.warn(`[indexer] Base agreement read failed for ${slaId}; retaining cached funding`, error);
+  }
   const providerFunded = toStr(sla.provider_base_funding_tx) !== "";
   const customerSigned = toStr(sla.customer_base_funding_tx) !== "";
   // The GenLayer contract records funding receipts but does not custody
@@ -88,10 +99,10 @@ export async function upsertSla(slaId: string, knownSla?: Record<string, unknown
       // migration; values are six-decimal Base USDC units from the
       // adjudicator, never a GenLayer balance.
       penaltyRateWeiPerMin: toStr(sla.penalty_rate_usdc_per_min),
-      escrowWei: toStr(sla.max_payout_usdc),
-      escrowDeposited: toStr(sla.max_payout_usdc),
-      bondWei: "0",
-      bondDeposited: "0",
+      escrowWei: baseFunding?.escrowUsdc.toString() ?? toStr(sla.max_payout_usdc),
+      escrowDeposited: baseFunding?.providerDeposited.toString() ?? "0",
+      bondWei: baseFunding?.customerBondUsdc.toString() ?? "0",
+      bondDeposited: baseFunding?.customerDeposited.toString() ?? "0",
       challengeBondWei: "0",
       toleranceMinutes: 0,
       challengeWindowSeconds: 0,
@@ -111,8 +122,12 @@ export async function upsertSla(slaId: string, knownSla?: Record<string, unknown
     },
     update: {
       baseAgreementId: toStr(sla.base_agreement_id),
-      escrowDeposited: toStr(sla.max_payout_usdc),
-      bondDeposited: "0",
+      ...(baseFunding ? {
+        escrowWei: baseFunding.escrowUsdc.toString(),
+        escrowDeposited: baseFunding.providerDeposited.toString(),
+        bondWei: baseFunding.customerBondUsdc.toString(),
+        bondDeposited: baseFunding.customerDeposited.toString(),
+      } : {}),
       adjudicatedWindows: [],
       status,
       providerFunded,

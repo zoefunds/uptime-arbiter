@@ -11,7 +11,7 @@ custodies user USDC. Base Sepolia's escrow contract is the only asset layer.
 | Fly app | `uptime-arbiter-usdc-api` |
 | Fly Postgres | `uptime-arbiter-usdc-db` |
 | API | `https://uptime-arbiter-usdc-api.fly.dev` |
-| Current release | 21 |
+| Runtime process groups | API and indexer, deployed together from the same image |
 | Final GenLayer contract | `0x1798573a1C99b5250881666999d8C3486E5cA4f1` |
 | Base escrow | `0x9656B5a51E94C7bDE57c3370420d617F7Cc2bD98` |
 
@@ -29,13 +29,28 @@ indexer; ordinary API routes only read those rows. GenLayer state is the source
 of truth for SLA terms and verdicts. Base state is the source of truth for
 USDC deposits and settlement.
 
-The only intentional post-write exception is `POST /slas/confirm-registration`.
+The only intentional post-write exceptions are `POST /slas/confirm-registration`
+and `POST /slas/:slaId/confirm-funding`.
 After a user has signed Base proposal/approval/funding and the GenLayer
 registration transaction, the endpoint performs a bounded direct read-back.
 It requires the same Base agreement ID, provider address, and provider funding
 receipt before returning the real SLA ID and mirroring it into Postgres. A
 timeout or missing match returns HTTP 409 and explicitly tells the client not
 to make another payment.
+
+`confirm-funding` applies the same safety rule to provider escrow and customer
+bond funding. It accepts the already-mined Base transaction hash plus the
+funding role, waits for the receipt to appear in GenLayer's persisted SLA
+record, then refreshes that SLA's cache row before returning `PROPOSED` or
+`ACTIVE`. Neither endpoint sends an on-chain transaction or decides an SLA;
+they only prove that a user-signed cross-chain write has already persisted.
+
+`GET /protocol/stats` is a live Postgres aggregate over the mirrored state. It
+returns registered/active SLA counts, claim and challenge counts, and the sum
+of provider plus customer deposits for active Base agreements. Monetary values
+are kept in six-decimal USDC base units as strings. During indexing,
+`readBaseAgreementFunding` reads `BaseUsdcEscrow.agreements(id)` so those
+amounts come from Base Sepolia, never from a GenLayer estimate.
 
 When GenLayer resolves a claim, the relayer submits the result to Base. The
 Base contract independently enforces that customer payout plus provider refund

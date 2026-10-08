@@ -83,12 +83,22 @@ export interface ChallengeRow {
   newBreachMinutes: number;
 }
 
+export interface ProtocolStats {
+  total_active_escrow_usdc: string;
+  total_slas_registered: number;
+  total_slas_active: number;
+  total_claims_submitted: number;
+  total_claims_resolved_breach: number;
+  total_challenges_filed: number;
+  updated_at: string;
+}
+
 export const api = {
   protocolConfig: () =>
     request<{ contractAddress: string; networkAlias: string; chainId: number; rpcUrl: string }>(
       "/protocol/config",
     ),
-  protocolStats: () => request<Record<string, string>>("/protocol/stats"),
+  protocolStats: () => request<ProtocolStats>("/protocol/stats"),
 
   listSlas: (params: { status?: string; page?: number } = {}) => {
     const qs = new URLSearchParams();
