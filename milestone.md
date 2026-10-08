@@ -12,10 +12,10 @@ Uptime Arbiter now has a strict split trust boundary:
 
 - Base Sepolia escrow: `0x5b15a8b6c7BD8C3fB104332A61dA2a5912290794`
   - deployment: `0xa76696958048d64daad02eed5ce3d48ba5f890e80872c071beb66e93a6a90b88`
-- Final GenLayer adjudicator: `0x7ffcD2869bb0121dFD2E36A2164c36f0e508C333`
-  - deployment: `0xfa27cbf655c3b8eb98aad174f1df7bd4100c08fba13566d86cde358388e25cf9`
+- Final GenLayer adjudicator: `0xcACB25F194b0821A74B3978B67acD7719c7E4F5C`
+  - deployment: `0xe4ebfdd5dd2d3ac9dc1b8ecb8985a8a2e021c667733cd99db396ba583a718ee6`
 
-The GenLayer contract converts the wire-level 256-bit transaction value back to a canonical 32-byte `0x…` Base transaction hash before storing it. This matches StudioNet's hash encoding and keeps the normal frontend funding flow intact.
+The GenLayer contract normalizes browser-supplied customer addresses into GenLayer `Address` values and converts the wire-level 256-bit Base transaction value back to a canonical 32-byte `0x…` receipt. Provider funding is recorded atomically during SLA registration.
 
 ## Live cross-chain verification
 

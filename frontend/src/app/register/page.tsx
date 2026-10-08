@@ -139,7 +139,7 @@ export default function RegisterSlaPage() {
       const adjudicationTx = await sendGenlayer("register_adjudication", [
         Number(baseAgreementId), customer, label || "Unlabeled SLA", coveredService.trim(),
         Math.round(Number(targetUptimePct) * 100), usdcToUnits(penaltyRate).toString(),
-        usdcToUnits(escrow).toString(), now, now + Number(termDays) * DAY, cleanSources, exclusionTerms.trim(),
+        usdcToUnits(escrow).toString(), now, now + Number(termDays) * DAY, cleanSources, exclusionTerms.trim(), BigInt(fundingTx),
       ]);
       if (!adjudicationTx) throw new Error("GenLayer adjudication registration was not submitted");
       setDone(true);
