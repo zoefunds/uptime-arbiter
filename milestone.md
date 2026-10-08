@@ -36,6 +36,7 @@ Each Base agreement holds exactly 1.200000 USDC: 1.000000 USDC provider escrow a
 - The backend is live at `https://uptime-arbiter-usdc-api.fly.dev/healthz` and indexes the final GenLayer address. It projects the on-chain Base receipts into the registry's funded/co-signed state.
 - The Vercel production app is live at `https://uptime-arbiter.vercel.app`, configured for the final Base escrow and GenLayer adjudicator.
 - The Register SLA autofill uses three publicly reachable machine-readable evidence sources (GitHub, OpenAI, and AWS status endpoints), valid terms, a valid EVM address, and six-decimal USDC values accepted by the contracts.
+- Registration now executes the user-signed cross-chain sequence explicitly: switch to Base Sepolia, propose the SLA, approve the exact provider USDC amount, deposit that USDC into `BaseUsdcEscrow`, then switch to StudioNet and register the adjudication terms. A failed or rejected step is shown to the user and stops the sequence; it is never silently skipped.
 
 ## Validation performed
 
