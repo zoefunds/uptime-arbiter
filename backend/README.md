@@ -1,97 +1,92 @@
-# Uptime Arbiter — Backend
+# Uptime Arbiter backend
 
-Fastify API + background indexer, mirroring `contracts/UptimeArbiter.py`
-into Postgres for fast reads. Never makes a business decision — see the
-header comment in `prisma/schema.prisma` and `src/genlayer/client.ts`.
+The backend is a Fastify API, GenLayer indexer, and narrowly-scoped Base
+settlement relay. It is not an SLA decision-maker and never accepts or
+custodies user USDC. Base Sepolia's escrow contract is the only asset layer.
 
-**USDC milestone deployment**:
-- API: `https://uptime-arbiter-usdc-api.fly.dev` (`fly.io` app `uptime-arbiter-usdc-api`)
-- Postgres: `uptime-arbiter-usdc-db` (a new database; old SLA index rows are deliberately not reused)
-- GenLayer adjudicator: `0xcACB25F194b0821A74B3978B67acD7719c7E4F5C`
-- Base Sepolia USDC escrow: `0x5b15a8b6c7BD8C3fB104332A61dA2a5912290794`
+## Production deployment
+
+| Resource | Value |
+| --- | --- |
+| Fly app | `uptime-arbiter-usdc-api` |
+| Fly Postgres | `uptime-arbiter-usdc-db` |
+| API | `https://uptime-arbiter-usdc-api.fly.dev` |
+| Current release | 21 |
+| Final GenLayer contract | `0xcACB25F194b0821A74B3978B67acD7719c7E4F5C` |
+| Base escrow | `0x5b15a8b6c7BD8C3fB104332A61dA2a5912290794` |
+
+`fly.toml` runs two always-on process groups from the same image:
+
+- `api` runs `node dist/server.js`; `/healthz` checks Postgres and Redis.
+- `indexer` runs `node dist/indexer/poll.js`; it survives individual GenLayer
+  failures and retries on a later cycle.
+
+## Trust and data model
+
+Postgres is a denormalized read cache, not protocol authority. `SlaAgreement`,
+`Claim`, and `Challenge` rows are written from GenLayer view methods by the
+indexer; ordinary API routes only read those rows. GenLayer state is the source
+of truth for SLA terms and verdicts. Base state is the source of truth for
+USDC deposits and settlement.
+
+The only intentional post-write exception is `POST /slas/confirm-registration`.
+After a user has signed Base proposal/approval/funding and the GenLayer
+registration transaction, the endpoint performs a bounded direct read-back.
+It requires the same Base agreement ID, provider address, and provider funding
+receipt before returning the real SLA ID and mirroring it into Postgres. A
+timeout or missing match returns HTTP 409 and explicitly tells the client not
+to make another payment.
+
+When GenLayer resolves a claim, the relayer submits the result to Base. The
+Base contract independently enforces that customer payout plus provider refund
+equals exactly the USDC held by that agreement; the backend cannot mint or
+overpay funds.
 
 ## Local development
 
-Requires a local Postgres (native Homebrew/apt install, or your own
-container) and the shared Redis (Upstash URL already in `.env`).
-
 ```bash
 npm install
-npx prisma migrate dev   # first run only
-npm run dev              # API on :8080
-npm run indexer          # separate terminal — background sync loop
+npx prisma migrate dev
+npm run dev       # Fastify on :8080
+npm run indexer   # separate terminal
 ```
 
-`GET /healthz` reports DB + Redis connectivity.
+Required environment values are documented in `.env.example`. In addition to
+Postgres and Redis, use the final GenLayer contract address, a Base Sepolia RPC
+URL, the Base escrow address, and the relayer key only in backend secrets.
+Never expose the relayer key through the frontend.
 
-## Deploying to Fly.io
+## Deploying
 
-The app is already deployed (see above). To redeploy after code changes:
+From `backend/`:
 
 ```bash
-fly deploy --app uptime-arbiter-usdc-api
+npm run build
+fly deploy
 ```
 
-`release_command` runs `prisma migrate deploy` automatically, so schema
-changes ship safely on every deploy. To point at a redeployed contract
-address:
+The Fly release command runs `prisma migrate deploy`. Contract migrations are
+not routine configuration changes: if `NEXT_PUBLIC_CONTRACT_ADDRESS` is changed,
+the cache must be cleared first because contract-local IDs such as `SLA-1` can
+overlap an earlier deployment.
 
 ```bash
-fly secrets set NEXT_PUBLIC_CONTRACT_ADDRESS="0x..." --app uptime-arbiter-usdc-api
+fly secrets set NEXT_PUBLIC_CONTRACT_ADDRESS="<new GenLayer address>" -a uptime-arbiter-usdc-api
+fly postgres connect -a uptime-arbiter-usdc-db --database uptime_arbiter_usdc
+# TRUNCATE TABLE "SlaAgreement", "Claim", "Challenge";
+# UPDATE "IndexerCursor" SET "slaOffset"=0, "claimOffset"=0, "lastRunAt"=NULL, "lastError"=NULL, "consecutiveErrors"=0 WHERE id='default';
 ```
 
-(Setting a secret automatically triggers a rolling redeploy — no separate
-`fly deploy` needed.) After doing this, the Postgres index cache should
-usually be cleared too, since a new contract's own id counters (`SLA-1`,
-`CLM-1`, ...) will collide with whatever the previous contract already
-indexed:
+Restart/redeploy the API and indexer after changing the contract secret. Do not
+delete on-chain agreements: database cleanup only clears the non-authoritative
+mirror.
 
-```bash
-fly postgres connect -a uptime-arbiter-db --database uptime_arbiter_api
-# TRUNCATE TABLE "SlaAgreement", "Claim", "Challenge" RESTART IDENTITY;
-# UPDATE "IndexerCursor" SET "slaOffset" = 0, "claimOffset" = 0, "lastRunAt" = NULL, "lastError" = NULL, "consecutiveErrors" = 0 WHERE id = 'default';
-```
+## GenLayer RPC budget
 
-**Setting up from scratch** (a fresh Fly org/account, not redeploying the
-existing app):
-
-```bash
-fly apps create uptime-arbiter-api
-fly postgres create --name uptime-arbiter-db --region iad --vm-size shared-cpu-1x --volume-size 1 --initial-cluster-size 1
-fly postgres attach uptime-arbiter-db --app uptime-arbiter-api
-fly secrets set \
-  REDIS_URL="..." \
-  JWT_SIGNING_SECRET="$(openssl rand -hex 32)" \
-  NEXT_PUBLIC_CONTRACT_ADDRESS="0x..." \
-  GENLAYER_STUDIONET_RPC_URL="https://studio.genlayer.com/api" \
-  GENLAYER_CHAIN_ID="61999" \
-  GENLAYER_NETWORK_ALIAS="studionet" \
-  CORS_ORIGINS="https://your-frontend.vercel.app" \
-  --app uptime-arbiter-api
-fly ips allocate-v4 --shared -a uptime-arbiter-api   # first deploy only —
-fly ips allocate-v6 -a uptime-arbiter-api            # IP provisioning can fail silently otherwise
-fly deploy --app uptime-arbiter-api
-```
-
-`fly.toml` runs two always-on process groups from one image — `api` (HTTP)
-and `indexer` (background sync) — each with `min_machines_running = 1` so
-Fly restarts them automatically if either crashes.
-
-The Dockerfile installs `openssl`/`ca-certificates` explicitly in the base
-stage — without it, Prisma's schema-engine binary fails on `node:20-slim`
-with an opaque `Error: Schema engine error:` and no further detail. If
-that error ever comes back, this is the first thing to check.
-
-## Rate limiting
-
-GenLayer StudioNet's real ceiling, confirmed live from an actual RPC error
-response, is **500 requests/hour** — not a per-minute limit. (An earlier
-version of this backend assumed 30/min, which sustained is ~1800/hour,
-~3.6x over the real limit, and locked the indexer out entirely on first
-real use — see `MEMORY.md` for the incident.) Every outbound RPC call this
-service makes — indexer polling AND the live per-user balance relay route
-— goes through `src/lib/rateLimiter.ts`, a Redis sliding **1-hour** window
-capped at 420/hour (500 minus an 80-request safety margin). The indexer
-polls every 60s with a budget of 6 calls/cycle (360/hour worst case),
-leaving headroom under that cap for live API reads sharing the same
-limiter.
+StudioNet has a practical ceiling of 500 requests/hour. The shared Redis
+sliding-window limiter reserves an 80-request margin and caps ordinary backend
+reads at 420/hour. The indexer runs every 180 seconds with a six-call cycle
+budget (120 calls/hour worst case), leaving room for API reads. The bounded
+post-write confirmation route is deliberately outside that background queue so
+it can give a payment-safety answer promptly rather than waiting behind cache
+work.

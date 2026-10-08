@@ -34,6 +34,14 @@ The backend performs a second bounded post-write read-back: it searches final Ge
 - The Register SLA autofill uses three publicly reachable machine-readable evidence sources (GitHub, OpenAI, and AWS status endpoints), valid terms, a valid EVM address, and six-decimal USDC values accepted by the contracts.
 - Registration now executes the user-signed cross-chain sequence explicitly: switch to Base Sepolia, propose the SLA, approve the exact provider USDC amount, deposit that USDC into `BaseUsdcEscrow`, read back the on-chain escrow state, then switch to StudioNet and register the adjudication terms. A failed or rejected step is shown to the user and stops the sequence; it is never silently skipped.
 
+### User-visible recovery behavior
+
+- A Base receipt with status other than `success` stops the workflow.
+- The Base agreement ID is decoded from the provider's actual proposal event; the UI does not pre-compute or assume the next agreement number.
+- The provider's USDC balance is checked before any proposal transaction, and the post-deposit read-back checks the exact expected USDC amount rather than merely a non-zero balance.
+- A GenLayer transaction reaching submission/consensus is not presented as a completed SLA by itself. The frontend waits for backend confirmation of the persisted final-contract record with the same Base agreement, provider, and Base receipt.
+- If that confirmation is slow, the form is locked and the message explicitly says not to make another USDC payment. The SLA Registry remains the source of ordinary user-facing SLA records.
+
 ## Validation performed
 
 - `forge test -vvv`: three escrow lifecycle tests passed (partial breach, no breach, and expiry refund).
@@ -44,4 +52,4 @@ The backend performs a second bounded post-write read-back: it searches final Ge
 
 ## Source comparison
 
-[Latest milestone update](https://github.com/zoefunds/uptime-arbiter/compare/548fa69...e0a1c9c)
+[Latest milestone update](https://github.com/zoefunds/uptime-arbiter/compare/548fa69...main)

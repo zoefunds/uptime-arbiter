@@ -1,79 +1,77 @@
-# Uptime Arbiter — Frontend
+# Uptime Arbiter frontend
 
-Next.js 16 (App Router, Turbopack), Tailwind v4, wagmi + Reown AppKit for
-wallet connect, genlayer-js for direct browser-to-contract reads/writes.
+Next.js 16 App Router application using Tailwind v4, wagmi/Reown AppKit,
+viem, and `genlayer-js`. It guides one connected wallet through the Base
+Sepolia escrow actions and the distinct GenLayer StudioNet adjudication action.
 
-**Currently live**: https://uptime-arbiter.vercel.app (Vercel project
-`uptime-arbiter`), tracking GenLayer adjudicator
-`0xcACB25F194b0821A74B3978B67acD7719c7E4F5C` and Base Sepolia escrow
-`0x5b15a8b6c7BD8C3fB104332A61dA2a5912290794` via
-`https://uptime-arbiter-usdc-api.fly.dev`.
+## Production configuration
 
-## Trust boundary
+| Value | Production setting |
+| --- | --- |
+| App | [uptime-arbiter.vercel.app](https://uptime-arbiter.vercel.app) |
+| GenLayer contract | `0xcACB25F194b0821A74B3978B67acD7719c7E4F5C` |
+| Base escrow | `0x5b15a8b6c7BD8C3fB104332A61dA2a5912290794` |
+| Base USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| API | `https://uptime-arbiter-usdc-api.fly.dev` |
 
-Base escrow writes (`propose`, `fundProvider`, `fundCustomer`) are signed by
-the connected wallet on Base Sepolia. GenLayer writes register evidence,
-acknowledge the immutable Base funding receipts, and adjudicate claims. The
-backend (`NEXT_PUBLIC_API_BASE_URL`) is read-only except for the authorized
-server-side Base settlement relay after a final GenLayer verdict.
+`NEXT_PUBLIC_CONTRACT_ADDRESS` is set in Vercel production. The frontend also
+contains the verified final-contract address as a fallback so an absent public
+environment variable cannot silently revive an old contract. The site footer
+renders the active address; users should verify it shows `0xcAC...4F5C` before
+signing a GenLayer transaction.
 
-Writes wait for the contract transaction to reach `ACCEPTED` (not
-`FINALIZED` — state changes already apply at `ACCEPTED`; `FINALIZED` only
-additionally means the appeal window has closed, and routinely takes
-longer than a UI should block on). If that wait itself times out, the
-write is NOT treated as failed — the transaction was already submitted by
-that point — it surfaces as a `warning`, not an `error`. See
-`src/lib/genlayer.ts` and `src/hooks/use-genlayer-write.ts`.
+## Registration safety sequence
+
+The register page does not treat a wallet popup as proof of an SLA:
+
+1. It switches the wallet to Base Sepolia, checks Base USDC balance, then asks
+   for the Base `propose`, USDC `approve`, and `fundProvider` signatures.
+2. It waits for successful Base receipts, reads the agreement ID from the
+   `AgreementProposed` log, and repeatedly reads the Base agreement until the
+   exact provider/customer/amounts/provider deposit are confirmed.
+3. It switches the same wallet to StudioNet and calls GenLayer
+   `register_adjudication` with the confirmed Base agreement ID and actual
+   provider funding hash.
+4. It calls the backend's bounded confirmation endpoint. Success appears only
+   after the final GenLayer SLA matching all those values is visible.
+
+If Base money has been confirmed but GenLayer indexing is delayed, the form is
+disabled and tells the user not to retry or pay again. This prevents accidental
+duplicate escrow deposits. Customer bond funding follows the same cross-chain
+principle from the SLA page: Base transfer first, then GenLayer receipt record.
+
+## Pages
+
+- `/registry` and `/registry/[slaId]`: final-contract SLA list/details,
+  escrow status, customer co-signing, and claim access.
+- `/register`: provider Base escrow creation followed by linked GenLayer
+  adjudication registration. “Fill Sample Data” uses real public GitHub,
+  OpenAI, and AWS status endpoints with contract-valid terms.
+- `/claims` and `/claims/[claimId]`: adjudication/claim status.
+- `/vault`: Base settlement view.
+- `/verification`: redirects to `/registry`; test cards are deliberately not
+  presented as SLAs.
 
 ## Local development
 
 ```bash
 npm install
-cp .env.local.example .env.local   # fill in values, or copy from repo root .env
+cp .env.local.example .env.local
 npm run dev
+npx tsc --noEmit
 ```
 
-Requires the backend running locally (see `../backend/README.md`) for the
-registry/claims/vault pages to have data to show; the landing page's live
-stats ribbon degrades gracefully if the backend is unreachable.
+Set `NEXT_PUBLIC_REOWN_PROJECT_ID`, `NEXT_PUBLIC_API_BASE_URL`, and the public
+network values in `.env.local`. The registry, claims, and vault pages require a
+running backend for indexed data.
 
-## Deploying to Vercel
-
-The app is already deployed (see above). To redeploy after code changes:
+## Deployment
 
 ```bash
-vercel deploy --prod --scope adebiyi2002gmailcoms-projects
+vercel --prod --yes
 ```
 
-To change an env var (e.g. after redeploying the contract):
-
-```bash
-vercel env rm NEXT_PUBLIC_CONTRACT_ADDRESS production --yes --scope adebiyi2002gmailcoms-projects
-echo "0x..." | vercel env add NEXT_PUBLIC_CONTRACT_ADDRESS production --scope adebiyi2002gmailcoms-projects
-vercel deploy --prod --scope adebiyi2002gmailcoms-projects
-```
-
-**Setting up from scratch** (a new Vercel project):
-
-```bash
-vercel link --yes --project uptime-arbiter --scope <your-scope>
-vercel env add NEXT_PUBLIC_REOWN_PROJECT_ID production --scope <your-scope>
-vercel env add NEXT_PUBLIC_CONTRACT_ADDRESS production --scope <your-scope>
-vercel env add NEXT_PUBLIC_GENLAYER_CHAIN_ID production --scope <your-scope>
-vercel env add NEXT_PUBLIC_GENLAYER_RPC_URL production --scope <your-scope>
-vercel env add NEXT_PUBLIC_API_BASE_URL production --scope <your-scope>
-vercel deploy --prod --scope <your-scope>
-```
-
-## Pages
-
-- `/` — landing, protocol pitch, live stats ribbon
-- `/registry`, `/registry/[slaId]` — browse SLAs, fund/co-sign/cancel/submit claims
-- `/register` — Base escrow proposal plus linked GenLayer evidence registration
-- `/claims`, `/claims/[claimId]` — GenLayer adjudication room
-- `/vault` — Base USDC settlement status
-
-Navigation below the `xl` breakpoint uses a hamburger menu
-(`src/components/site-header.tsx`) — the nav previously had no mobile
-fallback at all; fixed after a dedicated mobile-responsiveness pass (see
-`MEMORY.md`).
+When intentionally migrating the GenLayer contract, set
+`NEXT_PUBLIC_CONTRACT_ADDRESS` to the new address and deploy a fresh production
+build. Verify the public rendered footer afterward; changing a Vercel value
+does not alter an already-built bundle.
