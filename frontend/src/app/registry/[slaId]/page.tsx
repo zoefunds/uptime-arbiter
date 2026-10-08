@@ -15,7 +15,7 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
   const { address } = useAccount();
   const queryClient = useQueryClient();
   const { send, pending, error: writeError, warning: writeWarning, txId } = useGenlayerWrite();
-  const { send: sendBase, approveUsdc, waitForBaseReceipt, pending: basePending, error: baseError, txHash: baseTxHash } = useBaseUsdcWrite();
+  const { send: sendBase, approveUsdc, waitForBaseReceipt, pending: basePending, error: baseError, txHash: baseTxHash, progress: baseProgress } = useBaseUsdcWrite();
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
 
@@ -31,6 +31,7 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
   const { sla, claims } = data;
   const isProvider = address?.toLowerCase() === sla.provider.toLowerCase();
   const isCustomer = address?.toLowerCase() === sla.customer.toLowerCase();
+  const escrowActive = sla.providerFunded && sla.customerSigned;
   const now = Math.floor(Date.now() / 1000);
 
   async function refresh() {
@@ -90,6 +91,17 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
         </div>
       )}
       {baseTxHash && <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">Base Sepolia transaction submitted: {baseTxHash}</div>}
+      {baseProgress.stage !== "idle" && (
+        <div className={baseProgress.stage === "failed" ? "rounded bg-error/10 px-4 py-3 font-mono text-xs text-error" : "rounded bg-primary/10 px-4 py-3 font-mono text-xs text-primary"}>
+          <span className="uppercase">Base escrow · {baseProgress.stage.replace("-", " ")}</span>
+          <span className="ml-2">{baseProgress.message}</span>
+          {baseProgress.txHash && (
+            <a className="ml-2 underline" href={`https://sepolia.basescan.org/tx/${baseProgress.txHash}`} target="_blank" rel="noreferrer">
+              View transaction ↗
+            </a>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         <div className="flex flex-col gap-6 xl:col-span-8">
@@ -171,19 +183,24 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
               <StatusRow label="Base customer bond" done={sla.customerSigned} amount={`${formatUsdc(sla.bondWei)} USDC`} />
             </div>
 
-            {sla.status === "PROPOSED" && isProvider && !sla.providerFunded && (
+            {!escrowActive && address && !isProvider && !isCustomer && (
+              <div className="rounded bg-tertiary/10 px-3 py-2 font-mono text-[11px] text-tertiary">
+                This wallet cannot fund this SLA. Connect the recorded customer wallet {shortAddress(sla.customer)} to lock the customer bond.
+              </div>
+            )}
+            {!escrowActive && isProvider && !sla.providerFunded && (
               <Button className="w-full" disabled={pending || basePending} onClick={handleLockEscrow}>
                 {basePending ? "Approving/funding Base…" : `Approve & Lock (${formatUsdc(sla.escrowWei)} USDC)`}
               </Button>
             )}
-            {sla.status === "PROPOSED" && isCustomer && !sla.customerSigned && (
+            {!escrowActive && isCustomer && !sla.customerSigned && (
               <Button className="w-full" disabled={pending || basePending} onClick={handleCoSign}>
                 {basePending ? "Approving/funding Base…" : `Approve & Lock (${formatUsdc(sla.bondWei)} USDC)`}
               </Button>
             )}
           </Card>
 
-          {sla.status === "ACTIVE" && isCustomer && sla.activeClaimId === "" && (
+          {escrowActive && isCustomer && sla.activeClaimId === "" && (
             <Card>
               <h2 className="mb-4 font-display text-lg font-semibold text-on-surface">Submit Breach Claim</h2>
               <div className="flex flex-col gap-3">

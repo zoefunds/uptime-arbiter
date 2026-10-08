@@ -44,7 +44,7 @@ const SAMPLE_VALUES = {
 export default function RegisterSlaPage() {
   const { address } = useAccount();
   const router = useRouter();
-  const { send: sendBase, approveUsdc, waitForBaseReceipt, pending: basePending, error: baseError, txHash } = useBaseUsdcWrite();
+  const { send: sendBase, approveUsdc, waitForBaseReceipt, pending: basePending, error: baseError, txHash, progress: baseProgress } = useBaseUsdcWrite();
   const { send: sendGenlayer, pending: adjudicationPending, error: adjudicationError } = useGenlayerWrite();
   const pending = basePending || adjudicationPending;
   const error = baseError ?? adjudicationError;
@@ -215,6 +215,17 @@ export default function RegisterSlaPage() {
 
       {error && <div className="rounded bg-error/10 px-4 py-3 font-mono text-xs text-error">{error}</div>}
       {progress && <div className="rounded bg-primary/10 px-4 py-3 font-mono text-xs text-primary">{progress}</div>}
+      {baseProgress.stage !== "idle" && (
+        <div className={baseProgress.stage === "failed" ? "rounded bg-error/10 px-4 py-3 font-mono text-xs text-error" : "rounded bg-primary/10 px-4 py-3 font-mono text-xs text-primary"}>
+          <span className="uppercase">Base escrow · {baseProgress.stage.replace("-", " ")}</span>
+          <span className="ml-2">{baseProgress.message}</span>
+          {baseProgress.txHash && (
+            <a className="ml-2 underline" href={`https://sepolia.basescan.org/tx/${baseProgress.txHash}`} target="_blank" rel="noreferrer">
+              View transaction ↗
+            </a>
+          )}
+        </div>
+      )}
       {done && (
         <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">
           Base Sepolia escrow confirmed ({txHash}) and GenLayer SLA {registeredSlaId} was persisted.

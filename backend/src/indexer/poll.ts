@@ -69,6 +69,10 @@ export async function upsertSla(slaId: string): Promise<void> {
   const sla = await contract.getSla(slaId);
   const providerFunded = toStr(sla.provider_base_funding_tx) !== "";
   const customerSigned = toStr(sla.customer_base_funding_tx) !== "";
+  // The GenLayer contract records funding receipts but does not custody
+  // USDC. Derive the registry lifecycle honestly: an agreement is active
+  // only after both Base-side funding acknowledgements exist.
+  const status = providerFunded && customerSigned ? "ACTIVE" : "PROPOSED";
   await prisma.slaAgreement.upsert({
     where: { slaId },
     create: {
@@ -96,7 +100,7 @@ export async function upsertSla(slaId: string): Promise<void> {
       exclusionTerms: toStr(sla.exclusion_terms),
       sourceDigest: "",
       adjudicatedWindows: [],
-      status: "ACTIVE",
+      status,
       providerFunded,
       customerSigned,
       createdAt: "",
@@ -110,7 +114,7 @@ export async function upsertSla(slaId: string): Promise<void> {
       escrowDeposited: toStr(sla.max_payout_usdc),
       bondDeposited: "0",
       adjudicatedWindows: [],
-      status: "ACTIVE",
+      status,
       providerFunded,
       customerSigned,
       termStartTs: toBigInt(sla.term_start_ts),

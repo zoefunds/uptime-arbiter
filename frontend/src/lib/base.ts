@@ -68,6 +68,21 @@ export async function ensureBaseSepolia(provider: unknown) {
   if (await chainId() !== BASE_SEPOLIA_CHAIN_ID_HEX) throw new Error("Please switch your wallet to Base Sepolia to continue");
 }
 
+/**
+ * Network changes can leave AppKit/wagmi displaying one account while an
+ * injected provider has another selected. Re-read the provider immediately
+ * before a Base signature so approvals and deposits cannot be signed by an
+ * unintended account.
+ */
+export async function assertBaseSigningAccount(provider: unknown, expected: Address) {
+  const wallet = provider as Eip1193Provider;
+  await ensureBaseSepolia(wallet);
+  const accounts = await wallet.request({ method: "eth_accounts" }) as string[];
+  if (!accounts.some((account) => account.toLowerCase() === expected.toLowerCase())) {
+    throw new Error(`Wallet account changed. Reconnect the SLA wallet (${expected}) and try again.`);
+  }
+}
+
 export async function nextBaseAgreementId() {
   if (!BASE_ESCROW_ADDRESS) throw new Error("Base escrow is not configured");
   return basePublicClient.readContract({ address: BASE_ESCROW_ADDRESS, abi: baseEscrowAbi, functionName: "nextAgreementId" });
