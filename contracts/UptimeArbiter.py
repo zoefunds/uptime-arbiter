@@ -8,6 +8,15 @@ from datetime import datetime, timezone
 def require(ok, message):
     if not ok: raise gl.vm.UserError("[EXPECTED] " + message)
 
+def canonical_base_tx_hash(value):
+    """Restore a canonical 32-byte Base transaction hash from CLI wire data."""
+    require(value > 0, "Invalid Base receipt")
+    alphabet = "0123456789abcdef"
+    encoded = "0x"
+    for shift in range(252, -1, -4):
+        encoded += alphabet[(int(value) >> shift) & 15]
+    return encoded
+
 @allow_storage
 @dataclass
 class SLA:
@@ -40,6 +49,8 @@ class UptimeArbiter(gl.Contract):
     claims: TreeMap[str, Claim]
     sla_ids: DynArray[str]
     claim_ids: DynArray[str]
+    sla_count: u256
+    claim_count: u256
     def __init__(self):
         self.sla_count = u256(0); self.claim_count = u256(0)
 
@@ -66,28 +77,31 @@ class UptimeArbiter(gl.Contract):
         require(int(penalty_rate_usdc_per_min) > 0 and int(max_payout_usdc) > 0, "USDC terms must be positive")
         self.sla_count += u256(1); identifier = "SLA-" + str(self.sla_count)
         minutes = (term_end_ts-term_start_ts)//60; grace = minutes*(10000-target_uptime_bps)//10000
-        self.slas[identifier] = SLA(identifier,u256(base_agreement_id),gl.message.sender_address,Address(customer),label,covered_service,u256(target_uptime_bps),u256(grace),u256(int(penalty_rate_usdc_per_min)),u256(int(max_payout_usdc)),DynArray(evidence_sources),exclusion_terms,u256(term_start_ts),u256(term_end_ts),"","","")
+        self.slas[identifier] = SLA(identifier,u256(base_agreement_id),gl.message.sender_address,customer,label,covered_service,u256(target_uptime_bps),u256(grace),u256(int(penalty_rate_usdc_per_min)),u256(int(max_payout_usdc)),evidence_sources,exclusion_terms,u256(term_start_ts),u256(term_end_ts),"","","")
         self.sla_ids.append(identifier); return identifier
 
     @gl.public.write
-    def record_base_funding(self, sla_id: str, role: str, base_tx_hash: str) -> None:
+    def record_base_funding(self, sla_id: str, role: str, base_tx_hash: int) -> None:
         """Audit acknowledgement only: USDC remains exclusively on Base Sepolia."""
-        s=self.slas[sla_id]; require(s.sla_id != "" and len(base_tx_hash) == 66 and base_tx_hash.startswith("0x"), "Invalid Base receipt")
+        s=self.slas[sla_id]; receipt=canonical_base_tx_hash(base_tx_hash)
+        require(s.sla_id != "", "Unknown SLA")
         if role == "PROVIDER":
             require(gl.message.sender_address == s.provider and s.provider_base_funding_tx == "", "Unauthorized or already acknowledged")
-            s.provider_base_funding_tx=base_tx_hash
+            provider_receipt=receipt; customer_receipt=s.customer_base_funding_tx
         elif role == "CUSTOMER":
             require(gl.message.sender_address == s.customer and s.customer_base_funding_tx == "", "Unauthorized or already acknowledged")
-            s.customer_base_funding_tx=base_tx_hash
+            provider_receipt=s.provider_base_funding_tx; customer_receipt=receipt
         else: raise gl.vm.UserError("[EXPECTED] Invalid funding role")
-        self.slas[sla_id]=s
+        # Replacing the complete storage value is required by the GenLayer VM;
+        # mutating a field obtained from a TreeMap view is not persisted.
+        self.slas[sla_id]=SLA(s.sla_id,s.base_agreement_id,s.provider,s.customer,s.label,s.covered_service,s.target_uptime_bps,s.grace_minutes,s.penalty_rate_usdc_per_min,s.max_payout_usdc,list(s.evidence_sources),s.exclusion_terms,s.term_start_ts,s.term_end_ts,s.active_claim_id,provider_receipt,customer_receipt)
 
     @gl.public.write
     def submit_claim(self, sla_id: str, window_start_ts: int, window_end_ts: int) -> str:
         s=self.slas[sla_id]; require(s.sla_id != "" and s.active_claim_id == "", "SLA unavailable")
         require(gl.message.sender_address == s.customer and window_start_ts >= s.term_start_ts and window_end_ts <= s.term_end_ts and window_end_ts > window_start_ts, "Invalid claim")
         self.claim_count += u256(1); identifier="CLM-"+str(self.claim_count)
-        self.claims[identifier]=Claim(identifier,sla_id,gl.message.sender_address,u256(window_start_ts),u256(window_end_ts),DynArray(list(s.evidence_sources)),"PINNED",u256(0),u256(0),u256(0),"","",False)
+        self.claims[identifier]=Claim(identifier,sla_id,gl.message.sender_address,u256(window_start_ts),u256(window_end_ts),list(s.evidence_sources),"PINNED",u256(0),u256(0),u256(0),"","",False)
         s.active_claim_id=identifier; self.slas[sla_id]=s; self.claim_ids.append(identifier); return identifier
 
     @gl.public.write

@@ -26,4 +26,11 @@ cd frontend && npx tsc --noEmit
 cd backend && npm run build
 ```
 
-After deployment set `NEXT_PUBLIC_BASE_ESCROW_ADDRESS` to the Base escrow address and retain the GenLayer adjudicator address separately.
+## Live deployment
+
+- Base Sepolia escrow: `0x5b15a8b6c7BD8C3fB104332A61dA2a5912290794`
+- GenLayer StudioNet adjudicator: `0x7ffcD2869bb0121dFD2E36A2164c36f0e508C333`
+- Production app: https://uptime-arbiter.vercel.app
+- API: https://uptime-arbiter-usdc-api.fly.dev/healthz
+
+See `milestone.md` for the three real Base-to-GenLayer lifecycle records.

@@ -66,6 +66,8 @@ function toBigInt(v: unknown): bigint {
 
 async function upsertSla(slaId: string): Promise<void> {
   const sla = await contract.getSla(slaId);
+  const providerFunded = toStr(sla.provider_base_funding_tx) !== "";
+  const customerSigned = toStr(sla.customer_base_funding_tx) !== "";
   await prisma.slaAgreement.upsert({
     where: { slaId },
     create: {
@@ -94,8 +96,8 @@ async function upsertSla(slaId: string): Promise<void> {
       sourceDigest: "",
       adjudicatedWindows: [],
       status: "ACTIVE",
-      providerFunded: false,
-      customerSigned: false,
+      providerFunded,
+      customerSigned,
       createdAt: "",
       registrationDeadlineTs: BigInt(0),
       termStartTs: toBigInt(sla.term_start_ts),
@@ -108,8 +110,8 @@ async function upsertSla(slaId: string): Promise<void> {
       bondDeposited: "0",
       adjudicatedWindows: [],
       status: "ACTIVE",
-      providerFunded: false,
-      customerSigned: false,
+      providerFunded,
+      customerSigned,
       termStartTs: toBigInt(sla.term_start_ts),
       termEndTs: toBigInt(sla.term_end_ts),
       activeClaimId: toStr(sla.active_claim_id),

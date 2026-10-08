@@ -6,7 +6,6 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatUsdc, shortAddress, STATUS_LABELS } from "@/lib/format";
 import { StatusChip, EmptyState, ErrorState, LoadingState } from "@/components/ui";
-import results from "../../../public/e2e-results.json";
 
 const FILTERS = [
   { value: undefined, label: "All" },
@@ -117,18 +116,6 @@ export default function RegistryPage() {
         </div>
       )}
 
-      <section className="mt-4 border-t border-outline-variant pt-8" aria-labelledby="settlement-tests">
-        <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
-          <div><span className="block font-mono text-[10px] uppercase tracking-widest text-secondary">Registry verification</span><h2 id="settlement-tests" className="font-display text-xl font-semibold uppercase text-on-surface">Executed settlement scenarios</h2></div>
-          <span className="font-mono text-[10px] text-on-surface-variant">Foundry · {results.results.length}/{results.results.length} passed · Base Sepolia USDC</span>
-        </div>
-        <p className="mb-4 max-w-4xl text-sm text-on-surface-variant">These are executed escrow lifecycle records for this registry&apos;s Base USDC agreement model. They are contract-test evidence, not sample SLAs or live customer data.</p>
-        <div className="overflow-x-auto rounded-xl bg-surface-container">
-          <table className="w-full min-w-[760px] border-collapse text-left"><thead><tr className="bg-surface-container-lowest font-mono text-[10px] uppercase tracking-wider text-on-surface-variant"><th className="px-4 py-3">Scenario</th><th className="px-4 py-3">Base USDC flow</th><th className="px-4 py-3">Verified outcome</th><th className="px-4 py-3 text-right">Result</th></tr></thead>
-            <tbody className="divide-y divide-surface-container-high text-sm">{results.results.map((test) => <tr key={test.function} className="align-top hover:bg-surface-container-high"><td className="px-4 py-3.5"><div className="font-medium text-on-surface">{test.name}</div><code className="mt-1 block text-[11px] text-primary">{test.function}()</code></td><td className="max-w-md px-4 py-3.5 text-xs leading-relaxed text-on-surface-variant">{test.scenario}</td><td className="px-4 py-3.5 font-mono text-xs text-on-surface-variant">{test.assertions.map((assertion) => <div key={assertion}>✓ {assertion}</div>)}</td><td className="px-4 py-3.5 text-right"><span className="inline-block rounded bg-secondary/15 px-2 py-1 font-mono text-[10px] uppercase text-secondary">Passed · {test.gas.toLocaleString()} gas</span></td></tr>)}</tbody>
-          </table>
-        </div>
-      </section>
     </div>
   );
 }

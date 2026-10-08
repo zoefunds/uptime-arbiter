@@ -4,17 +4,18 @@ Next.js 16 (App Router, Turbopack), Tailwind v4, wagmi + Reown AppKit for
 wallet connect, genlayer-js for direct browser-to-contract reads/writes.
 
 **Currently live**: https://uptime-arbiter.vercel.app (Vercel project
-`uptime-arbiter`), tracking contract `0x61D6F3bdf53118523572a141F7E1904591147F94`
-on GenLayer StudioNet via backend `https://uptime-arbiter-api.fly.dev`.
+`uptime-arbiter`), tracking GenLayer adjudicator
+`0x7ffcD2869bb0121dFD2E36A2164c36f0e508C333` and Base Sepolia escrow
+`0x5b15a8b6c7BD8C3fB104332A61dA2a5912290794` via
+`https://uptime-arbiter-usdc-api.fly.dev`.
 
 ## Trust boundary
 
-Every write (`propose_sla`, `lock_provider_escrow`, `co_sign_and_lock_bond`,
-`submit_claim`, `evaluate_claim`, `file_challenge`, `resolve_challenge`,
-`finalize_claim`, `withdraw`) is signed by the connected wallet and sent
-directly to the deployed contract via `src/lib/genlayer.ts` — never proxied
-through the backend. The backend (`NEXT_PUBLIC_API_BASE_URL`) is read-only:
-paginated SLA/claim/challenge listings and live withdrawable-balance lookups.
+Base escrow writes (`propose`, `fundProvider`, `fundCustomer`) are signed by
+the connected wallet on Base Sepolia. GenLayer writes register evidence,
+acknowledge the immutable Base funding receipts, and adjudicate claims. The
+backend (`NEXT_PUBLIC_API_BASE_URL`) is read-only except for the authorized
+server-side Base settlement relay after a final GenLayer verdict.
 
 Writes wait for the contract transaction to reach `ACCEPTED` (not
 `FINALIZED` — state changes already apply at `ACCEPTED`; `FINALIZED` only
@@ -68,11 +69,9 @@ vercel deploy --prod --scope <your-scope>
 
 - `/` — landing, protocol pitch, live stats ribbon
 - `/registry`, `/registry/[slaId]` — browse SLAs, fund/co-sign/cancel/submit claims
-- `/register` — 4-step SLA proposal form (`propose_sla`, including pinned
-  exclusion terms) with a "Fill Sample Data" button for quick testing
-- `/claims`, `/claims/[claimId]` — adjudication room: trigger evaluation,
-  file/resolve challenges, finalize settlement
-- `/vault` — per-wallet withdrawable balance + `withdraw()`
+- `/register` — Base escrow proposal plus linked GenLayer evidence registration
+- `/claims`, `/claims/[claimId]` — GenLayer adjudication room
+- `/vault` — Base USDC settlement status
 
 Navigation below the `xl` breakpoint uses a hamburger menu
 (`src/components/site-header.tsx`) — the nav previously had no mobile

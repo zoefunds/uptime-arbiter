@@ -7,8 +7,8 @@ header comment in `prisma/schema.prisma` and `src/genlayer/client.ts`.
 **USDC milestone deployment**:
 - API: `https://uptime-arbiter-usdc-api.fly.dev` (`fly.io` app `uptime-arbiter-usdc-api`)
 - Postgres: `uptime-arbiter-usdc-db` (a new database; old SLA index rows are deliberately not reused)
-- GenLayer adjudicator: `0xC9f0fC17f29D7F4521dBef942CBE9481dB839d0D`
-- Base Sepolia USDC escrow: `0xf19027e7EA05165A44336F5A2c53f7A09B26a0F3`
+- GenLayer adjudicator: `0x7ffcD2869bb0121dFD2E36A2164c36f0e508C333`
+- Base Sepolia USDC escrow: `0x5b15a8b6c7BD8C3fB104332A61dA2a5912290794`
 
 ## Local development
 
