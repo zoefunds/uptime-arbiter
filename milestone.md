@@ -44,4 +44,4 @@ The backend performs a second bounded post-write read-back: it searches final Ge
 
 ## Source comparison
 
-[Baseline to this milestone](https://github.com/zoefunds/uptime-arbiter/compare/77e4efa3f6a5fd46eb77d9ec7bb73c3ef0a0b316...b93f582ebcb231a3ddb0aae2f4ceda3d123987aa)
+[Latest milestone update](https://github.com/zoefunds/uptime-arbiter/compare/548fa69...e0a1c9c)
