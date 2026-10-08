@@ -9,6 +9,7 @@ import { formatUsdc, formatTs, shortAddress, STATUS_LABELS } from "@/lib/format"
 import { Card, StatusChip, Button, LoadingState, ErrorState } from "@/components/ui";
 import { useGenlayerWrite } from "@/hooks/use-genlayer-write";
 import { useBaseUsdcWrite } from "@/hooks/use-base-usdc-write";
+import { readBaseAgreement } from "@/lib/base";
 
 export default function SlaDetailPage({ params }: { params: Promise<{ slaId: string }> }) {
   const { slaId } = use(params);
@@ -25,6 +26,13 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
     refetchInterval: 10_000,
   });
 
+  const { data: baseAgreement } = useQuery({
+    queryKey: ["base-agreement", data?.sla.baseAgreementId],
+    queryFn: () => readBaseAgreement(BigInt(data!.sla.baseAgreementId)),
+    enabled: Boolean(data?.sla.baseAgreementId),
+    refetchInterval: 15_000,
+  });
+
   if (isLoading) return <div className="px-4 py-16 lg:px-6"><LoadingState /></div>;
   if (isError || !data) return <div className="px-4 py-16 lg:px-6"><ErrorState message="SLA not found" /></div>;
 
@@ -39,7 +47,7 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
   }
 
   async function handleLockEscrow() {
-    const value = BigInt(sla.escrowWei);
+    const value = baseAgreement?.escrowUsdc ?? BigInt(sla.escrowWei);
     await approveUsdc(value);
     const hash = await sendBase("fundProvider", [BigInt(sla.baseAgreementId)]);
     if (!hash) return;
@@ -49,7 +57,11 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
   }
 
   async function handleCoSign() {
-    const value = BigInt(sla.bondWei);
+    const value = baseAgreement?.customerBondUsdc;
+    if (!value || value <= 0n) throw new Error("The Base escrow bond is still loading. Wait a moment and try again.");
+    if (address?.toLowerCase() !== baseAgreement?.customer.toLowerCase()) {
+      throw new Error(`Connect the Base customer wallet ${baseAgreement?.customer ?? sla.customer} before bonding this escrow.`);
+    }
     await approveUsdc(value);
     const hash = await sendBase("fundCustomer", [BigInt(sla.baseAgreementId)]);
     if (!hash) return;
@@ -180,7 +192,7 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
             <h2 className="mb-4 font-display text-lg font-semibold text-on-surface">Escrow Status</h2>
             <div className="mb-4 flex flex-col gap-2 font-mono text-xs">
               <StatusRow label="Base provider escrow" done={sla.providerFunded} amount={`${formatUsdc(sla.escrowWei)} USDC`} />
-              <StatusRow label="Base customer bond" done={sla.customerSigned} amount={`${formatUsdc(sla.bondWei)} USDC`} />
+              <StatusRow label="Base customer bond" done={sla.customerSigned} amount={`${formatUsdc(baseAgreement?.customerBondUsdc ?? BigInt(sla.bondWei))} USDC`} />
             </div>
 
             {!escrowActive && address && !isProvider && !isCustomer && (
