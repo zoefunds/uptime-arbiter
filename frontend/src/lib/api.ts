@@ -99,6 +99,8 @@ export const api = {
     );
   },
   getSla: (slaId: string) => request<{ sla: SlaRow; claims: ClaimRow[] }>(`/slas/${slaId}`),
+  confirmRegistration: (input: { baseAgreementId: string; provider: string; providerFundingTx: string }) =>
+    request<{ slaId: string }>("/slas/confirm-registration", { method: "POST", body: JSON.stringify(input) }),
 
   listClaims: (params: { status?: string; slaId?: string; claimant?: string; page?: number } = {}) => {
     const qs = new URLSearchParams();

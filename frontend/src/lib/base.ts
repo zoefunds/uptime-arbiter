@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, custom, http, type Address } from "viem";
+import { createPublicClient, createWalletClient, custom, decodeEventLog, http, type Address } from "viem";
 import { baseSepolia } from "viem/chains";
 
 export const BASE_SEPOLIA_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as const;
@@ -12,6 +12,23 @@ export const baseEscrowAbi = [
   { type: "function", name: "propose", stateMutability: "nonpayable", inputs: [{ name: "customer", type: "address" }, { name: "escrowUsdc", type: "uint128" }, { name: "customerBondUsdc", type: "uint128" }, { name: "registrationDeadline", type: "uint64" }, { name: "termEnd", type: "uint64" }], outputs: [{ name: "agreementId", type: "uint256" }] },
   { type: "function", name: "fundProvider", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }], outputs: [] },
   { type: "function", name: "fundCustomer", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }], outputs: [] },
+  {
+    type: "function", name: "agreements", stateMutability: "view", inputs: [{ name: "agreementId", type: "uint256" }],
+    outputs: [
+      { name: "provider", type: "address" }, { name: "customer", type: "address" },
+      { name: "escrowUsdc", type: "uint128" }, { name: "customerBondUsdc", type: "uint128" },
+      { name: "providerDeposited", type: "uint128" }, { name: "customerDeposited", type: "uint128" },
+      { name: "registrationDeadline", type: "uint64" }, { name: "termEnd", type: "uint64" }, { name: "status", type: "uint8" },
+    ],
+  },
+  {
+    type: "event", name: "AgreementProposed", inputs: [
+      { name: "agreementId", type: "uint256", indexed: true }, { name: "provider", type: "address", indexed: true },
+      { name: "customer", type: "address", indexed: true }, { name: "escrowUsdc", type: "uint256", indexed: false },
+      { name: "customerBondUsdc", type: "uint256", indexed: false }, { name: "registrationDeadline", type: "uint64", indexed: false },
+      { name: "termEnd", type: "uint64", indexed: false },
+    ],
+  },
 ] as const;
 
 const basePublicClient = createPublicClient({ chain: baseSepolia, transport: http() });
@@ -57,12 +74,69 @@ export async function nextBaseAgreementId() {
 }
 
 export async function waitForBaseReceipt(hash: `0x${string}`) {
-  return basePublicClient.waitForTransactionReceipt({ hash });
+  const receipt = await basePublicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error(`Base Sepolia transaction reverted: ${hash}`);
+  return receipt;
+}
+
+/**
+ * Never predict an agreement number client-side. The proposal receipt is the
+ * canonical association between this wallet action and an escrow agreement.
+ */
+export function agreementIdFromProposalReceipt(receipt: Awaited<ReturnType<typeof waitForBaseReceipt>>): bigint {
+  for (const log of receipt.logs) {
+    try {
+      const decoded = decodeEventLog({ abi: baseEscrowAbi, data: log.data, topics: log.topics });
+      if (decoded.eventName === "AgreementProposed" && decoded.args.agreementId !== undefined) {
+        return decoded.args.agreementId;
+      }
+    } catch {
+      // A receipt has logs from USDC and possibly other contracts; only the
+      // escrow's AgreementProposed event is relevant here.
+    }
+  }
+  throw new Error("The Base proposal confirmed without an AgreementProposed event");
+}
+
+type BaseAgreement = {
+  provider: Address; customer: Address; escrowUsdc: bigint; customerBondUsdc: bigint;
+  providerDeposited: bigint; customerDeposited: bigint; registrationDeadline: bigint; termEnd: bigint; status: number;
+};
+
+export async function readBaseAgreement(agreementId: bigint): Promise<BaseAgreement> {
+  const agreement = await basePublicClient.readContract({
+    address: BASE_ESCROW_ADDRESS, abi: baseEscrowAbi, functionName: "agreements", args: [agreementId],
+  });
+  const [provider, customer, escrowUsdc, customerBondUsdc, providerDeposited, customerDeposited, registrationDeadline, termEnd, status] = agreement;
+  return { provider, customer, escrowUsdc, customerBondUsdc, providerDeposited, customerDeposited, registrationDeadline, termEnd, status };
+}
+
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Base RPC/indexing can lag just after a mined receipt. Retry the read-back. */
+export async function confirmBaseFunding(args: {
+  agreementId: bigint; provider: Address; customer: Address; escrowUsdc: bigint; customerBondUsdc: bigint; party: "provider" | "customer";
+}) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const a = await readBaseAgreement(args.agreementId);
+    const termsMatch = a.provider.toLowerCase() === args.provider.toLowerCase()
+      && a.customer.toLowerCase() === args.customer.toLowerCase()
+      && a.escrowUsdc === args.escrowUsdc && a.customerBondUsdc === args.customerBondUsdc;
+    const funded = args.party === "provider" ? a.providerDeposited === args.escrowUsdc : a.customerDeposited === args.customerBondUsdc;
+    if (termsMatch && funded) return a;
+    await pause(1_250);
+  }
+  throw new Error("Base receipt was mined but the escrow state did not confirm. Do not repeat the payment; refresh and check the Base transaction.");
 }
 
 export const usdcAbi = [
   { type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ type: "uint256" }] },
 ] as const;
+
+export async function baseUsdcBalance(account: Address) {
+  return basePublicClient.readContract({ address: BASE_SEPOLIA_USDC, abi: usdcAbi, functionName: "balanceOf", args: [account] });
+}
 
 /** User-signed Base Sepolia transaction; USDC never transits GenLayer. */
 export async function writeBaseContract(

@@ -29,7 +29,7 @@ cd backend && npm run build
 ## Live deployment
 
 - Base Sepolia escrow: `0x5b15a8b6c7BD8C3fB104332A61dA2a5912290794`
-- GenLayer StudioNet adjudicator: `0x7ffcD2869bb0121dFD2E36A2164c36f0e508C333`
+- GenLayer StudioNet adjudicator: `0xcACB25F194b0821A74B3978B67acD7719c7E4F5C`
 - Production app: https://uptime-arbiter.vercel.app
 - API: https://uptime-arbiter-usdc-api.fly.dev/healthz
 

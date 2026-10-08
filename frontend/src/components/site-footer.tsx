@@ -1,4 +1,4 @@
-const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ?? "";
+const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0xcACB25F194b0821A74B3978B67acD7719c7E4F5C";
 
 export function SiteFooter() {
   return (

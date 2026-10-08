@@ -7,6 +7,9 @@ import { Card, Button } from "@/components/ui";
 import { useBaseUsdcWrite } from "@/hooks/use-base-usdc-write";
 import { useGenlayerWrite } from "@/hooks/use-genlayer-write";
 import { usdcToUnits } from "@/lib/format";
+import { api } from "@/lib/api";
+import { agreementIdFromProposalReceipt, baseUsdcBalance, confirmBaseFunding } from "@/lib/base";
+import { isAddress } from "viem";
 
 const DAY = 24 * 3600;
 
@@ -41,7 +44,7 @@ const SAMPLE_VALUES = {
 export default function RegisterSlaPage() {
   const { address } = useAccount();
   const router = useRouter();
-  const { send: sendBase, approveUsdc, nextBaseAgreementId, waitForBaseReceipt, pending: basePending, error: baseError, txHash } = useBaseUsdcWrite();
+  const { send: sendBase, approveUsdc, waitForBaseReceipt, pending: basePending, error: baseError, txHash } = useBaseUsdcWrite();
   const { send: sendGenlayer, pending: adjudicationPending, error: adjudicationError } = useGenlayerWrite();
   const pending = basePending || adjudicationPending;
   const error = baseError ?? adjudicationError;
@@ -62,6 +65,8 @@ export default function RegisterSlaPage() {
   const [exclusionTerms, setExclusionTerms] = useState("");
   const [done, setDone] = useState(false);
   const [progress, setProgress] = useState("");
+  const [recoveryRequired, setRecoveryRequired] = useState(false);
+  const [registeredSlaId, setRegisteredSlaId] = useState("");
 
   // Mirrors the contract's own derivation exactly (propose_sla):
   // grace_minutes = term_minutes * (10000 - target_uptime_bps) // 10000.
@@ -105,8 +110,8 @@ export default function RegisterSlaPage() {
       alert("At least 3 evidence sources are required.");
       return;
     }
-    if (!customer) {
-      alert("Customer address is required.");
+    if (!isAddress(customer)) {
+      alert("A valid Base Sepolia customer address is required.");
       return;
     }
     if (!coveredService.trim()) {
@@ -115,25 +120,41 @@ export default function RegisterSlaPage() {
     }
 
     try {
+      setRecoveryRequired(false);
+      setDone(false);
+      // The connected-wallet gate above guarantees this is present during an
+      // interactive submission; retain the concrete type for the Base and
+      // GenLayer confirmations below.
+      const providerAddress = address as `0x${string}`;
       // The Base Sepolia path is deliberately first and mandatory: propose
       // the agreement, approve official USDC, then pull the provider's stake
       // into the Base escrow. Only that confirmed agreement is registered on
       // GenLayer for adjudication.
       const now = Math.floor(Date.now() / 1000);
-      const baseAgreementId = await nextBaseAgreementId();
+      const escrowUnits = usdcToUnits(escrow);
+      const bondUnits = usdcToUnits(bond);
+      setProgress("Checking your Base Sepolia USDC balance…");
+      const balance = await baseUsdcBalance(providerAddress);
+      if (balance < escrowUnits) throw new Error(`Insufficient Base Sepolia USDC. This SLA needs ${escrow} USDC from the provider.`);
       setProgress("Confirm the Base Sepolia SLA proposal in your wallet…");
-      const proposalTx = await sendBase("propose", [customer, usdcToUnits(escrow), usdcToUnits(bond), BigInt(now + Number(registrationTtlDays) * DAY), BigInt(now + Number(termDays) * DAY)]);
+      const proposalTx = await sendBase("propose", [customer, escrowUnits, bondUnits, BigInt(now + Number(registrationTtlDays) * DAY), BigInt(now + Number(termDays) * DAY)]);
       if (!proposalTx) throw new Error("Base Sepolia proposal was not submitted");
-      await waitForBaseReceipt(proposalTx);
+      const proposalReceipt = await waitForBaseReceipt(proposalTx);
+      const baseAgreementId = agreementIdFromProposalReceipt(proposalReceipt);
 
       setProgress("Confirm USDC approval for the Base escrow…");
-      const approvalTx = await approveUsdc(usdcToUnits(escrow));
+      const approvalTx = await approveUsdc(escrowUnits);
       await waitForBaseReceipt(approvalTx);
 
       setProgress("Confirm the provider USDC escrow deposit on Base Sepolia…");
       const fundingTx = await sendBase("fundProvider", [BigInt(baseAgreementId)]);
       if (!fundingTx) throw new Error("Provider USDC escrow deposit was not submitted");
       await waitForBaseReceipt(fundingTx);
+      setProgress("Verifying the exact provider USDC deposit in the Base escrow…");
+      await confirmBaseFunding({
+        agreementId: baseAgreementId, provider: providerAddress, customer: customer as `0x${string}`,
+        escrowUsdc: escrowUnits, customerBondUsdc: bondUnits, party: "provider",
+      });
 
       setProgress("Registering the adjudication terms on GenLayer…");
       const adjudicationTx = await sendGenlayer("register_adjudication", [
@@ -142,12 +163,19 @@ export default function RegisterSlaPage() {
         usdcToUnits(escrow).toString(), now, now + Number(termDays) * DAY, cleanSources, exclusionTerms.trim(), BigInt(fundingTx),
       ]);
       if (!adjudicationTx) throw new Error("GenLayer adjudication registration was not submitted");
+      setProgress("Confirming the persisted GenLayer adjudication record…");
+      const confirmation = await api.confirmRegistration({
+        baseAgreementId: baseAgreementId.toString(), provider: providerAddress, providerFundingTx: fundingTx,
+      });
       setDone(true);
-      setProgress("Base USDC is escrowed and the linked GenLayer SLA is registered.");
-      setTimeout(() => router.push("/registry"), 2500);
+      setRegisteredSlaId(confirmation.slaId);
+      setProgress("Base USDC is escrowed and the linked GenLayer SLA is confirmed.");
+      setTimeout(() => router.push(`/registry/${confirmation.slaId}`), 2500);
     } catch (cause) {
-      setProgress("");
-      alert(cause instanceof Error ? cause.message : String(cause));
+      const message = cause instanceof Error ? cause.message : String(cause);
+      // A retry after confirmed Base funding could create a second escrow.
+      if (progress.includes("GenLayer") || progress.includes("persisted")) setRecoveryRequired(true);
+      setProgress(message);
     }
   }
 
@@ -189,7 +217,12 @@ export default function RegisterSlaPage() {
       {progress && <div className="rounded bg-primary/10 px-4 py-3 font-mono text-xs text-primary">{progress}</div>}
       {done && (
         <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">
-          Base Sepolia escrow proposed ({txHash}) and its GenLayer adjudication agreement was registered.
+          Base Sepolia escrow confirmed ({txHash}) and GenLayer SLA {registeredSlaId} was persisted.
+        </div>
+      )}
+      {recoveryRequired && (
+        <div className="rounded bg-tertiary/10 px-4 py-3 font-mono text-xs text-tertiary">
+          Your Base USDC deposit was already confirmed. Do not submit this form again; refresh the SLA Registry while GenLayer finishes indexing the linked adjudication record.
         </div>
       )}
 
@@ -283,7 +316,7 @@ export default function RegisterSlaPage() {
         />
       </Card>
 
-      <Button disabled={pending} onClick={handleSubmit} className="self-start">
+      <Button disabled={pending || recoveryRequired} onClick={handleSubmit} className="self-start">
         {pending ? "Creating Base escrow, then registering GenLayer adjudication…" : "Create Base Escrow & GenLayer Adjudication"}
       </Button>
     </div>

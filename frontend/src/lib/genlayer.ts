@@ -3,8 +3,11 @@ import { studionet } from "genlayer-js/chains";
 import { TransactionStatus } from "genlayer-js/types";
 import type { CalldataEncodable } from "genlayer-js/types";
 
-export const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ??
-  "") as `0x${string}`;
+// A missing public build variable must never silently revive an older
+// deployment. This is the verified StudioNet adjudicator; deployment
+// configuration may override it only for an intentional future migration.
+export const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
+  "0xcACB25F194b0821A74B3978B67acD7719c7E4F5C") as `0x${string}`;
 
 type Eip1193Provider = { request(args: { method: string; params?: unknown[] }): Promise<unknown> };
 const STUDIONET_CHAIN_ID_HEX = `0x${studionet.id.toString(16)}`;

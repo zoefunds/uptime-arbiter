@@ -64,7 +64,8 @@ function toBigInt(v: unknown): bigint {
   }
 }
 
-async function upsertSla(slaId: string): Promise<void> {
+/** Used by the post-write confirmation route as well as the background poller. */
+export async function upsertSla(slaId: string): Promise<void> {
   const sla = await contract.getSla(slaId);
   const providerFunded = toStr(sla.provider_base_funding_tx) !== "";
   const customerSigned = toStr(sla.customer_base_funding_tx) !== "";
@@ -313,13 +314,18 @@ async function mainLoop(): Promise<void> {
   }
 }
 
-process.on("unhandledRejection", (reason) => {
-  // eslint-disable-next-line no-console
-  console.error("[indexer] unhandled rejection (continuing):", reason);
-});
-process.on("uncaughtException", (err) => {
-  // eslint-disable-next-line no-console
-  console.error("[indexer] uncaught exception (continuing):", err);
-});
-
-mainLoop();
+// This module also exports the one authoritative cache-upsert routine for
+// post-write API confirmation. Do not start a second infinite indexer loop
+// inside the Fastify process when that routine is imported there.
+const isIndexerEntrypoint = /(?:^|\/)indexer\/poll\.(?:js|ts)$/.test(process.argv[1] ?? "");
+if (isIndexerEntrypoint) {
+  process.on("unhandledRejection", (reason) => {
+    // eslint-disable-next-line no-console
+    console.error("[indexer] unhandled rejection (continuing):", reason);
+  });
+  process.on("uncaughtException", (err) => {
+    // eslint-disable-next-line no-console
+    console.error("[indexer] uncaught exception (continuing):", err);
+  });
+  void mainLoop();
+}

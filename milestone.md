@@ -17,34 +17,30 @@ Uptime Arbiter now has a strict split trust boundary:
 
 The GenLayer contract normalizes browser-supplied customer addresses into GenLayer `Address` values and converts the wire-level 256-bit Base transaction value back to a canonical 32-byte `0x…` receipt. Provider funding is recorded atomically during SLA registration.
 
-## Live cross-chain verification
+## Cross-chain confirmation model
 
-Three real Base Sepolia agreements were proposed and fully funded, then registered as `SLA-1` through `SLA-3` on the final GenLayer contract. Each GenLayer readback contains the matching Base agreement ID plus both actual USDC funding transactions:
+The registry displays only normal SLAs from the final GenLayer contract—never seeded test cards or a separate verification view. `/verification` redirects to `/registry`.
 
-| GenLayer SLA | Base agreement | Provider funding receipt | Customer funding receipt |
-| --- | ---: | --- | --- |
-| SLA-1 | 1 | `0x342695f9abbdaf11c78882c22372393ac1906688537ca3a615b737f91c6d7088` | `0xba30d263f6b8aa003788b9b3df620a6cd7b0c1000f9189c6cc98f5d0bebc2809` |
-| SLA-2 | 2 | `0xe8c95ce7ba2537c30cb0899e1c7200ffc2128d228b24e3515f3d43bb493a4aab` | `0x358944f6c2712e660a9487e8b50479b299fdec7f0229be21480725b4de346a81` |
-| SLA-3 | 3 | `0xec51d08d33419a3894010514347a1a7100491b270c6df477a2606b818d0b241f` | `0x8040df4b49a5a2dfa05f9e84cf0d2613f0c09886b7054ff7813960ebac3d2ad2` |
+For every user-created SLA, the frontend now derives the Base agreement ID from the mined `AgreementProposed` event rather than guessing the next counter. It then reads the Base escrow until it proves the exact provider, customer, USDC amounts, and provider deposit. Only after that proof does it switch to StudioNet and submit `register_adjudication` with the real Base funding transaction receipt.
 
-Each Base agreement holds exactly 1.200000 USDC: 1.000000 USDC provider escrow and 0.200000 USDC customer bond. The three records display as ordinary active SLAs in the SLA Registry—not placeholder cards or a separate verification page. `/verification` redirects to `/registry`.
+The backend performs a second bounded post-write read-back: it searches final GenLayer state for the same Base agreement ID, provider, and funding receipt, mirrors the matching SLA into Postgres, and returns its real SLA ID. A slow StudioNet response produces a clear recovery message and disables re-submission; it never encourages a duplicate USDC deposit.
 
 ## Backend and frontend deployment
 
 - A clean Fly application/database pair is used: `uptime-arbiter-usdc-api` and `uptime-arbiter-usdc-db`.
-- The old indexed SLA tables and cursor were truncated before the final contract was indexed; no old-contract registry rows remain.
+- The old indexed SLA tables and cursor were truncated before the final contract was indexed; the registry now contains only rows from the final contract.
 - The backend is live at `https://uptime-arbiter-usdc-api.fly.dev/healthz` and indexes the final GenLayer address. It projects the on-chain Base receipts into the registry's funded/co-signed state.
 - The Vercel production app is live at `https://uptime-arbiter.vercel.app`, configured for the final Base escrow and GenLayer adjudicator.
 - The Register SLA autofill uses three publicly reachable machine-readable evidence sources (GitHub, OpenAI, and AWS status endpoints), valid terms, a valid EVM address, and six-decimal USDC values accepted by the contracts.
-- Registration now executes the user-signed cross-chain sequence explicitly: switch to Base Sepolia, propose the SLA, approve the exact provider USDC amount, deposit that USDC into `BaseUsdcEscrow`, then switch to StudioNet and register the adjudication terms. A failed or rejected step is shown to the user and stops the sequence; it is never silently skipped.
+- Registration now executes the user-signed cross-chain sequence explicitly: switch to Base Sepolia, propose the SLA, approve the exact provider USDC amount, deposit that USDC into `BaseUsdcEscrow`, read back the on-chain escrow state, then switch to StudioNet and register the adjudication terms. A failed or rejected step is shown to the user and stops the sequence; it is never silently skipped.
 
 ## Validation performed
 
 - `forge test -vvv`: three escrow lifecycle tests passed (partial breach, no breach, and expiry refund).
 - `frontend: npx tsc --noEmit`: passed during the production Vercel build.
 - `backend: npm run build`: run before final Fly deployment.
-- Live GenLayer reads verified all three final SLA IDs, Base agreement IDs, and six funding receipts.
-- Live backend `GET /slas?limit=10` returned exactly the three final active SLAs after database cleanup.
+- Live GenLayer readback verified the final-contract `SLA-1` record and its Base provider-funding receipt.
+- Live backend `GET /slas?limit=10` returned only final-contract registry data after database cleanup.
 
 ## Source comparison
 

@@ -2,6 +2,39 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../db/client.js";
 import { contract, CONTRACT_ADDRESS } from "../genlayer/client.js";
 import { config } from "../config.js";
+import { upsertSla } from "../indexer/poll.js";
+
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const text = (value: unknown) => value === undefined || value === null ? "" : String(value);
+const within = <T>(operation: Promise<T>, milliseconds: number): Promise<T> => Promise.race([
+  operation,
+  new Promise<T>((_, reject) => setTimeout(() => reject(new Error("confirmation read timed out")), milliseconds)),
+]);
+
+/**
+ * A GenLayer transaction reaching consensus is not by itself proof that the
+ * contract method completed. This checks the persisted contract state (with
+ * bounded retries for StudioNet read-after-write lag) before the frontend
+ * announces an escrow registration as complete.
+ */
+async function confirmRegistration(baseAgreementId: string, provider: string, providerFundingTx: string) {
+  const normalizedProvider = provider.toLowerCase();
+  const normalizedReceipt = providerFundingTx.toLowerCase();
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const ids = await contract.listSlaIdsPostWrite(0, 200);
+    for (const slaId of ids) {
+      const sla = await contract.getSlaPostWrite(slaId);
+      if (text(sla.base_agreement_id) === baseAgreementId
+        && text(sla.provider).toLowerCase() === normalizedProvider
+        && text(sla.provider_base_funding_tx).toLowerCase() === normalizedReceipt) {
+        await upsertSla(slaId);
+        return slaId;
+      }
+    }
+    await pause(2_000);
+  }
+  throw new Error("GenLayer did not persist the linked adjudication record yet");
+}
 
 /**
  * Every route here is a READ against the Postgres index cache (fast,
@@ -59,6 +92,24 @@ export async function protocolRoutes(app: FastifyInstance) {
       orderBy: { claimId: "desc" },
     });
     return { sla: row, claims };
+  });
+
+  app.post("/slas/confirm-registration", async (request, reply) => {
+    const body = request.body as { baseAgreementId?: string; provider?: string; providerFundingTx?: string };
+    if (!body.baseAgreementId || !body.provider || !body.providerFundingTx) {
+      return reply.code(400).send({ error: "baseAgreementId, provider, and providerFundingTx are required" });
+    }
+    try {
+      // The browser must never spin forever after a signed USDC payment if
+      // StudioNet is slow or temporarily unavailable.
+      const slaId = await within(confirmRegistration(body.baseAgreementId, body.provider, body.providerFundingTx), 15_000);
+      return { slaId };
+    } catch (cause) {
+      request.log.warn({ cause }, "registration confirmation not found yet");
+      return reply.code(409).send({
+        error: "Base USDC was confirmed, but GenLayer has not yet produced the matching adjudication record. Do not pay again; refresh this page shortly.",
+      });
+    }
   });
 
   app.get("/claims", async (request) => {
