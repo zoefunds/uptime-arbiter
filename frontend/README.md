@@ -18,6 +18,11 @@ The production configuration and API health were rechecked after the v0.8
 deployment on 2026-10-15. The registry is backed only by the active contract's
 indexer mirror; that mirror was cleared and its cursor reset during migration.
 
+The active registry has also completed a real challenged breach: the frontend's
+backend mirror reports `FINALIZED_BREACH` and receipt-verified Base
+`EXECUTED`, rather than a static test card. The public Base execution is
+[0x796e…ac8b](https://sepolia.basescan.org/tx/0x796ea0a1398772f6b4cd15cf34c7904b522c8a9345b13afc63ba43a8fd54ac8b).
+
 `NEXT_PUBLIC_CONTRACT_ADDRESS` is set in Vercel production. The frontend also
 contains the verified final-contract address as a fallback so an absent public
 environment variable cannot silently revive an old contract. The site footer

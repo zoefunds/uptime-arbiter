@@ -35,7 +35,7 @@ The v0.8 deployment finalized with majority validator agreement. Fly (`uptime-ar
 
 The previous contract mirror was cleared before indexing this deployment: 0 SLAs, 0 claims, 0 challenges, with offsets reset to zero. No user sessions or authentication records were deleted.
 
-A real, small USDC agreement is used to validate the new contract rather than seeded UI data. The earlier v0.6/v0.7 archive tests are retained as diagnostics: v0.6 exposed the validator date-parser incompatibility and v0.7 exposed JSON truncation before parsing. Neither result moved funds. v0.8 fixes both by using a contract-local RFC3339 parser and parsing complete structured archive JSON before applying the prompt cap.
+A real, small USDC agreement validates this deployment rather than seeded UI data. v0.8 uses a contract-local RFC3339 parser and parses complete structured Statuspage JSON before applying the prompt cap; this keeps archive size from changing payable evidence facts.
 
 | Step | Public reference |
 | --- | --- |
@@ -75,8 +75,6 @@ Direct Mode includes adversarial leader-minute, service, maintenance, quotation,
 
 ## Comparison
 
-The Uptime comparison starts from the requested Uptime baseline, not Obolus:
+The immutable Uptime comparison starts from the requested Uptime baseline, not Obolus:
 
-[`9c45aaf364e0e942b7e3beb2fc16afe8dc836cd2...main`](https://github.com/zoefunds/uptime-arbiter/compare/9c45aaf364e0e942b7e3beb2fc16afe8dc836cd2...main)
-
-After the final push, use the immutable full-SHA end commit in place of `main` for a fixed review link.
+[`9c45aaf364e0e942b7e3beb2fc16afe8dc836cd2...93723cb7706c3258a78280914cf0a55dba9691fa`](https://github.com/zoefunds/uptime-arbiter/compare/9c45aaf364e0e942b7e3beb2fc16afe8dc836cd2...93723cb7706c3258a78280914cf0a55dba9691fa)

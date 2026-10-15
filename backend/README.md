@@ -17,6 +17,12 @@ custodies user USDC. Base Sepolia's escrow contract is the only asset layer.
 
 The production `/healthz` response was rechecked after the v0.8 deployment on 2026-10-15 and reported both database and Redis checks as healthy. Contract-index rows are cleared before an address switch; the indexer begins at offset zero for the new contract, while auth/session data remains intact.
 
+The production indexer completed a challenged-breach relay on 2026-10-15. It
+recorded `FINALIZED_BREACH` with a one-challenge history, submitted
+[the delayed Base proposal](https://sepolia.basescan.org/tx/0xb10f8e0e4c40e4834ae8196f1914abd44d0982149b995387e813c4984e0ace2d),
+and recorded `EXECUTED` only after [the Base execution receipt](https://sepolia.basescan.org/tx/0x796ea0a1398772f6b4cd15cf34c7904b522c8a9345b13afc63ba43a8fd54ac8b)
+succeeded and the escrow read-back reported `Settled`.
+
 `fly.toml` runs two always-on process groups from the same image:
 
 - `api` runs `node dist/server.js`; `/healthz` checks Postgres and Redis.

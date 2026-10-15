@@ -16,6 +16,19 @@ Uptime Arbiter is a two-chain SLA protocol. GenLayer StudioNet adjudicates publi
 
 The API health endpoint was checked after deployment and reports healthy Postgres and Redis. Contract-index tables were deliberately cleared and their cursor reset before the new adjudicator was indexed; authentication/session data was not touched.
 
+## Verified live settlement
+
+The current deployment has completed a real challenged-breach lifecycle, not a
+seeded interface scenario. `CLM-1` finalized as a 474-minute breach, capped at
+`100000` Base-USDC units (0.100000 USDC), after one provider challenge and
+re-resolution. The backend authenticated the linked Base agreement, proposed
+the delayed settlement, waited through the party-veto window, verified a
+successful Base receipt, and reread escrow state before marking it executed.
+
+- [Finalized GenLayer ruling](https://explorer-studio.genlayer.com/transactions/0x612b8254f54ee8148a26a115748690dcb9237c1277dfc77cd65d03c461788020)
+- [Base settlement proposal](https://sepolia.basescan.org/tx/0xb10f8e0e4c40e4834ae8196f1914abd44d0982149b995387e813c4984e0ace2d)
+- [Receipt-verified Base execution](https://sepolia.basescan.org/tx/0x796ea0a1398772f6b4cd15cf34c7904b522c8a9345b13afc63ba43a8fd54ac8b)
+
 ## Security and lifecycle
 
 1. A provider creates and funds a Base agreement; the customer explicitly accepts and funds its bond, including when the bond is zero.
@@ -50,4 +63,5 @@ cd frontend && ./node_modules/.bin/tsc --noEmit && npm run lint
 
 The Direct Mode tests cover future/publication-lag rejection, one-per-provider Base binding, attempted Base-ID squatting, fabricated payout minutes, source/service/exclusion/quote disagreement, overlapping intervals, bounded challenge finalization, and deterministic Statuspage extraction. Foundry covers USDC distributions, zero-bond acceptance, claim substitution, expiry recovery, and durable veto/dispute handling.
 
-See [milestone.md](milestone.md) for deployment, live transaction, and migration evidence.
+See [milestone.md](milestone.md) for the complete deployment, live transaction,
+migration, and reviewer-remediation record.
