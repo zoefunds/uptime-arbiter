@@ -13,9 +13,9 @@ custodies user USDC. Base Sepolia's escrow contract is the only asset layer.
 | API | `https://uptime-arbiter-usdc-api.fly.dev` |
 | Runtime process groups | API and indexer, deployed together from the same image |
 | GenLayer v0.9 contract | `0x73EC2602e25e24FCF642C80642b8541095427Fc4` |
-| Base v0.6 escrow | `0xa0874a496d7B2997263c06B1698F79462777793e` |
+| Base v0.7 escrow | `0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A` |
 
-The production `/healthz` response was rechecked after the v0.9/v0.6 deployment on 2026-10-15 and reported both database and Redis checks as healthy. Contract-index rows are cleared before an address switch; the indexer begins at offset zero for the new contract, while auth/session data remains intact.
+The production `/healthz` response was rechecked after the v0.9/v0.7 deployment on 2026-10-15 and reported both database and Redis checks as healthy. Contract-index rows are cleared before an address switch; the indexer begins at offset zero for the new contract, while auth/session data remains intact.
 
 The prior v0.8/v0.5 production indexer completed a challenged-breach relay on 2026-10-15. It
 recorded `FINALIZED_BREACH` with a one-challenge history, submitted
@@ -79,8 +79,9 @@ balance after settlement. Consumers must use the Base lifecycle status together
 with pending-settlement, disputed-claim, and claim-consumption reads. A
 `Disputed` claim is never reproposed by the relay and cannot be refunded as its
 original deposits. After the contract's 24-hour review delay, only the separately
-configured resolver can re-authorize the already frozen claim and distribution;
-the escrow then starts a new ten-minute party review. The Base execution receipt—not a local
+configured resolver can re-authorize the already frozen claim and distribution.
+That reauthorization is final for the frozen claim, so it cannot be vetoed in
+an endless loop. The Base execution receipt—not a local
 transaction-string field—is the authoritative payment proof.
 
 ## Local development

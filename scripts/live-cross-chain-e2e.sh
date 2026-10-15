@@ -5,7 +5,7 @@ set -euo pipefail
 # encrypted keystore paths, never raw keys, and writes a machine-readable record
 # containing only public addresses and transaction hashes.
 BASE_RPC="${BASE_RPC:-https://sepolia.base.org}"
-BASE_ESCROW="${BASE_ESCROW:-0xa0874a496d7B2997263c06B1698F79462777793e}"
+BASE_ESCROW="${BASE_ESCROW:-0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A}"
 USDC="${USDC:-0x036CbD53842c5426634e7929541eC2318f3dCF7e}"
 GEN_CONTRACT="${GEN_CONTRACT:-0x73EC2602e25e24FCF642C80642b8541095427Fc4}"
 PROVIDER_KEYSTORE="${PROVIDER_KEYSTORE:?set PROVIDER_KEYSTORE}"

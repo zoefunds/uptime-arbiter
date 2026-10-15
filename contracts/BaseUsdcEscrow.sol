@@ -175,6 +175,10 @@ contract BaseUsdcEscrow {
         Agreement storage a = agreements[agreementId];
         PendingSettlement storage p = pendingSettlements[agreementId];
         if (a.status != Status.SettlementPending || (msg.sender != a.provider && msg.sender != a.customer)) revert Unauthorized();
+        // The first veto grants a bounded independent review. Once the
+        // separate resolver has approved that exact frozen ruling, a second
+        // unilateral veto cannot indefinitely prevent its execution.
+        if (disputeReauthorizedClaims[p.claimId]) revert InvalidState();
         if (block.timestamp >= p.executeAfter) revert DeadlinePassed();
         bytes32 claimId = p.claimId;
         p.vetoed = true;
@@ -190,7 +194,8 @@ contract BaseUsdcEscrow {
 
     /// @notice Re-authorizes exactly the ruling which was vetoed after a
     /// bounded independent review. It cannot change claimant, ruling hash, or
-    /// either payout. The normal ten-minute party review restarts afterwards.
+    /// either payout. This is final for the frozen claim: otherwise a liable
+    /// party could veto every reauthorization forever and defeat the ruling.
     function reauthorizeDisputedSettlement(uint256 agreementId) external onlyDisputeResolver {
         Agreement storage a = agreements[agreementId];
         PendingSettlement storage p = pendingSettlements[agreementId];

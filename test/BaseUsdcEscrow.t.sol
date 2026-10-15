@@ -116,6 +116,11 @@ contract BaseUsdcEscrowTest {
         vm.warp(block.timestamp + escrow.DISPUTE_REVIEW_DELAY());
         vm.prank(DISPUTE_RESOLVER);
         escrow.reauthorizeDisputedSettlement(id);
+        // A party received its one veto and independent review. It cannot
+        // cycle the same frozen ruling back into Disputed forever.
+        vm.prank(PROVIDER);
+        vm.expectRevert(BaseUsdcEscrow.InvalidState.selector);
+        escrow.vetoSettlement(id);
         vm.warp(block.timestamp + escrow.SETTLEMENT_DELAY());
         escrow.executeSettlement(id);
         _eq(usdc.balanceOf(CUSTOMER), 110_000_000, "legitimate vetoed payout remains enforceable");

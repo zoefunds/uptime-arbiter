@@ -9,10 +9,10 @@ This milestone completes the split required by the protocol: **GenLayer adjudica
 | Layer | Address | Deployment transaction |
 | --- | --- | --- |
 | GenLayer StudioNet v0.9 adjudicator | [`0x73EC2602e25e24FCF642C80642b8541095427Fc4`](https://explorer-studio.genlayer.com/address/0x73EC2602e25e24FCF642C80642b8541095427Fc4) | [`0xd4f87174bf2691fa8d0fc8fb66586c025fa515b855936f58e7e67e924416274d`](https://explorer-studio.genlayer.com/transactions/0xd4f87174bf2691fa8d0fc8fb66586c025fa515b855936f58e7e67e924416274d) |
-| Base Sepolia v0.6 escrow | [`0xa0874a496d7B2997263c06B1698F79462777793e`](https://sepolia.basescan.org/address/0xa0874a496d7B2997263c06B1698F79462777793e) | [`0xd1a578cb4ba05560fd308debd641fe41b8d1e882df93cda7742d3c83b7c59d5b`](https://sepolia.basescan.org/tx/0xd1a578cb4ba05560fd308debd641fe41b8d1e882df93cda7742d3c83b7c59d5b) |
+| Base Sepolia v0.7 escrow | [`0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A`](https://sepolia.basescan.org/address/0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A) | [`0x88c9a70ed2653e9912d7879ef42ef56eacd2825646c642e56416032741310520`](https://sepolia.basescan.org/tx/0x88c9a70ed2653e9912d7879ef42ef56eacd2825646c642e56416032741310520) |
 | Base Sepolia USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) | Circle test token |
 
-The v0.9 deployment finalized with majority validator agreement. Fly (`uptime-arbiter-usdc-api`) and Vercel production use the v0.9/v0.6 pair. `/healthz` was checked after migration and reported `database: true` and `redis: true`.
+The v0.9 deployment finalized with majority validator agreement. Fly (`uptime-arbiter-usdc-api`) and Vercel production use the v0.9/v0.7 pair. `/healthz` was checked after migration and reported `database: true` and `redis: true`.
 
 ## Reviewer findings closed
 
@@ -24,7 +24,7 @@ The v0.9 deployment finalized with majority validator agreement. Fly (`uptime-ar
 | Overlaps could inflate downtime | Intervals are unioned before minute rounding. |
 | GitHub Status timestamps were over-broad | v0.9 accepts only the canonical official archive host/path, uses update transitions for actual impairment intervals, and excludes qualifying announced maintenance deterministically. |
 | Base ID could be globally squatted | Reservation is provider-scoped. Backend authenticates the Base provider, parties, terms hash, deposits and deadlines before indexing/relaying; invalid records are skipped without stalling the cursor. |
-| A liable provider could veto then reclaim | A veto freezes the exact payout. Original-deposit recovery is disabled while disputed; after a 24-hour review, a separate resolver can re-authorize only that same ruling and restart the ten-minute veto window. |
+| A liable provider could veto then reclaim or loop vetoes | A veto freezes the exact payout. Original-deposit recovery is disabled while disputed; after a 24-hour review, a separate resolver can re-authorize only that same ruling, and the reauthorization is final for that frozen claim. |
 | Claims could be future or too fresh | GenLayer enforces completed observation windows, publication lag, service period and filing deadline. |
 | Settlement could bypass a challenge | Evaluation is provisional; one counterparty challenge is bounded and finalization waits for the challenge deadline. |
 | Expiry could erase an unresolved claim | Base preserves timely open claims through settlement deadline, then refunds original deposits through a bounded recovery path. |
@@ -33,7 +33,7 @@ The v0.9 deployment finalized with majority validator agreement. Fly (`uptime-ar
 
 ## Historical v0.8 positive challenged-breach trace
 
-The prior v0.8/v0.5 pair completed the funded trace below. It is retained as historical execution evidence only; its database mirror was cleared before the v0.9/v0.6 migration. No user sessions or authentication records were deleted.
+The prior v0.8/v0.5 pair completed the funded trace below. It is retained as historical execution evidence only; its database mirror was cleared before the v0.9/v0.7 migration. No user sessions or authentication records were deleted.
 
 A real, small USDC agreement validated the historical v0.8/v0.5 deployment rather than seeded UI data. v0.9 supersedes its coarse Statuspage timestamps with canonical-host validation, incident-update impairment intervals, and deterministic maintenance exclusions.
 

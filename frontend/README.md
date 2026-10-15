@@ -10,11 +10,11 @@ Sepolia escrow actions and the distinct GenLayer StudioNet adjudication action.
 | --- | --- |
 | App | [uptime-arbiter.vercel.app](https://uptime-arbiter.vercel.app) |
 | GenLayer v0.9 contract | `0x73EC2602e25e24FCF642C80642b8541095427Fc4` |
-| Base v0.6 escrow | `0xa0874a496d7B2997263c06B1698F79462777793e` |
+| Base v0.7 escrow | `0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A` |
 | Base USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | API | `https://uptime-arbiter-usdc-api.fly.dev` |
 
-The production configuration and API health were rechecked after the v0.9/v0.6
+The production configuration and API health were rechecked after the v0.9/v0.7
 deployment on 2026-10-15. The registry is backed only by the active contract's
 indexer mirror; that mirror was cleared and its cursor reset during migration.
 

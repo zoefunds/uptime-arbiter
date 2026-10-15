@@ -10,8 +10,8 @@ Uptime Arbiter is a two-chain SLA protocol. GenLayer StudioNet adjudicates publi
 | API health | [uptime-arbiter-usdc-api.fly.dev/healthz](https://uptime-arbiter-usdc-api.fly.dev/healthz) |
 | GenLayer v0.9 adjudicator | [`0x73EC2602e25e24FCF642C80642b8541095427Fc4`](https://explorer-studio.genlayer.com/address/0x73EC2602e25e24FCF642C80642b8541095427Fc4) |
 | GenLayer deployment | [`0xd4f8…274d`](https://explorer-studio.genlayer.com/transactions/0xd4f87174bf2691fa8d0fc8fb66586c025fa515b855936f58e7e67e924416274d) |
-| Base Sepolia v0.6 escrow | [`0xa0874a496d7B2997263c06B1698F79462777793e`](https://sepolia.basescan.org/address/0xa0874a496d7B2997263c06B1698F79462777793e) |
-| Base deployment | [`0xd1a5…59d5`](https://sepolia.basescan.org/tx/0xd1a578cb4ba05560fd308debd641fe41b8d1e882df93cda7742d3c83b7c59d5b) |
+| Base Sepolia v0.7 escrow | [`0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A`](https://sepolia.basescan.org/address/0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A) |
+| Base deployment | [`0x88c9…0520`](https://sepolia.basescan.org/tx/0x88c9a70ed2653e9912d7879ef42ef56eacd2825646c642e56416032741310520) |
 | Base Sepolia USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 
 The API health endpoint was checked after deployment and reports healthy Postgres and Redis. Contract-index tables were deliberately cleared and their cursor reset before the new adjudicator was indexed; authentication/session data was not touched.
@@ -38,7 +38,7 @@ successful Base receipt, and reread escrow state before marking it executed.
 5. A provisional result has one bounded counterparty challenge. Resolution re-runs all evidence; finalization is impossible until the challenge window closes.
 6. The backend derives a Base payout from authenticated terms and a finalized ruling. It proposes a ten-minute-vetoable settlement, verifies successful receipts, and reads Base state before reporting settlement.
 
-Base separates service coverage, claim filing, and settlement recovery deadlines. A timely claim blocks ordinary expiry. A veto permanently marks that claim `Disputed`, prevents relayer reproposal, and freezes the exact ruling rather than returning deposits. After a 24-hour independent review, the configured resolver may re-authorize only that frozen ruling and it receives a fresh ten-minute party review.
+Base separates service coverage, claim filing, and settlement recovery deadlines. A timely claim blocks ordinary expiry. A veto permanently marks that claim `Disputed`, prevents relayer reproposal, and freezes the exact ruling rather than returning deposits. After a 24-hour independent review, the configured resolver may re-authorize only that frozen ruling; this is final for that claim, so a liable party cannot veto repeatedly.
 
 ## Evidence consensus
 
@@ -50,7 +50,7 @@ For GitHub Actions, v0.9 accepts only the canonical official HTTPS incident arch
 
 The Base `termsHash` commits chain, escrow address, participants, deposits, all deadlines, pricing, service, evidence URLs, and exclusions. GenLayer scopes its reservation by `Base agreement ID + registering provider`, so a stranger cannot globally squat a Base ID. The backend rejects unauthenticated/mismatched records and advances its cursor past them, preventing invalid registrations from blocking legitimate indexing.
 
-The relayer cannot choose arbitrary economics: Base requires the exact open claim, a nonzero ruling hash, and a distribution equal to held USDC. A party veto freezes that exact ruling; it cannot be reproposed or refunded as original deposits. After an independent review delay, a separately configured resolver can re-authorize only the already-frozen ruling, which receives a new ten-minute party review. This is an explicit operational trust boundary rather than a light-client proof.
+The relayer cannot choose arbitrary economics: Base requires the exact open claim, a nonzero ruling hash, and a distribution equal to held USDC. A party veto freezes that exact ruling; it cannot be reproposed or refunded as original deposits. After an independent review delay, a separately configured resolver can re-authorize only the already-frozen ruling. That reauthorization is final for the frozen claim, preventing an endless veto loop. This is an explicit operational trust boundary rather than a light-client proof.
 
 ## Verification
 
