@@ -1,6 +1,6 @@
 import { createClient } from "genlayer-js";
 import { studionet } from "genlayer-js/chains";
-import { TransactionStatus } from "genlayer-js/types";
+import { ExecutionResult, TransactionStatus } from "genlayer-js/types";
 import type { CalldataEncodable } from "genlayer-js/types";
 
 // A missing public build variable must never silently revive an older
@@ -11,6 +11,8 @@ export const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
 
 type Eip1193Provider = { request(args: { method: string; params?: unknown[] }): Promise<unknown> };
 const STUDIONET_CHAIN_ID_HEX = `0x${studionet.id.toString(16)}`;
+
+class FinalizedExecutionError extends Error {}
 
 /** Switch the connected wallet before a signed GenLayer transaction. */
 async function ensureStudioNet(provider: unknown) {
@@ -91,16 +93,19 @@ export async function writeContractMethod(
       interval: 5_000,
       retries: 120,
     });
-    const candidate = receipt as unknown as { consensus_data?: { leader_receipt?: unknown } };
-    const rawLeader = candidate.consensus_data?.leader_receipt;
-    const leader = Array.isArray(rawLeader) ? rawLeader[0] : rawLeader;
-    const execution = leader as { execution_result?: string; genvm_result?: { status?: string }; result?: string } | undefined;
-    const status = execution?.execution_result ?? execution?.genvm_result?.status;
-    if (typeof status === "string" && status.toUpperCase() === "ERROR") {
-      throw new Error(`GenLayer transaction finalized with a contract execution error: ${txId}`);
+    const execution = (receipt as unknown as { txExecutionResultName?: ExecutionResult }).txExecutionResultName;
+    if (execution === ExecutionResult.FINISHED_WITH_ERROR) {
+      throw new FinalizedExecutionError(`GenLayer transaction finalized with a contract execution error: ${txId}`);
+    }
+    if (execution !== ExecutionResult.FINISHED_WITH_RETURN) {
+      throw new FinalizedExecutionError(`GenLayer transaction finalized without a successful execution result: ${txId}`);
     }
     return { txId, receipt, timedOut: false };
   } catch (err) {
+    // A confirmed execution failure is categorically different from a watcher
+    // timeout. It must reach the UI as an error and cannot be re-labelled as
+    // a harmless “submitted” result.
+    if (err instanceof FinalizedExecutionError) throw err;
     // The transaction was already submitted and broadcast at this point —
     // a polling timeout here means the SDK gave up watching, not that the
     // write failed. Surface txId so the caller can still tell the user

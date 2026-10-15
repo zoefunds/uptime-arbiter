@@ -16,7 +16,10 @@ contract BaseUsdcEscrow {
     uint8 public constant USDC_DECIMALS = 6;
     uint64 public constant SETTLEMENT_DELAY = 10 minutes;
 
-    enum Status { Proposed, Active, SettlementPending, Settled, Cancelled, Expired }
+    // Append-only so existing lifecycle numeric values remain stable for
+    // deployed-index compatibility. A veto is terminal for relay attempts on
+    // this claim, but funds retain the bounded recovery path.
+    enum Status { Proposed, Active, SettlementPending, Settled, Cancelled, Expired, Disputed }
 
     struct Agreement {
         address provider;
@@ -52,6 +55,7 @@ contract BaseUsdcEscrow {
     mapping(uint256 => Agreement) public agreements;
     mapping(uint256 => PendingSettlement) public pendingSettlements;
     mapping(bytes32 => bool) public consumedClaims;
+    mapping(bytes32 => bool) public disputedClaims;
 
     error Unauthorized();
     error InvalidAddress();
@@ -67,6 +71,7 @@ contract BaseUsdcEscrow {
     event ClaimOpened(uint256 indexed agreementId, bytes32 indexed claimId, uint64 observedWindowEnd);
     event SettlementProposed(uint256 indexed agreementId, bytes32 indexed claimId, bytes32 indexed rulingHash, uint256 customerPayoutUsdc, uint256 providerRefundUsdc, uint64 executeAfter);
     event SettlementVetoed(uint256 indexed agreementId, bytes32 indexed claimId, address indexed party);
+    event ClaimDisputed(uint256 indexed agreementId, bytes32 indexed claimId, address indexed party);
     event AdjudicationExecuted(uint256 indexed agreementId, bytes32 indexed claimId, bytes32 indexed rulingHash, uint256 customerPayoutUsdc, uint256 providerRefundUsdc);
     event AgreementClosed(uint256 indexed agreementId, Status status);
     event RelayerUpdated(address indexed previousRelayer, address indexed newRelayer);
@@ -138,7 +143,7 @@ contract BaseUsdcEscrow {
     function proposeAdjudication(uint256 agreementId, bytes32 claimId, bytes32 rulingHash, uint128 customerPayoutUsdc, uint128 providerRefundUsdc) external onlyRelayer {
         Agreement storage a = agreements[agreementId];
         if (a.status != Status.Active || !a.claimOpen || a.openClaimId != claimId) revert BindingMismatch();
-        if (block.timestamp > a.settlementDeadline || consumedClaims[claimId] || rulingHash == bytes32(0)) revert InvalidState();
+        if (block.timestamp > a.settlementDeadline || consumedClaims[claimId] || disputedClaims[claimId] || rulingHash == bytes32(0)) revert InvalidState();
         uint256 held = uint256(a.providerDeposited) + a.customerDeposited;
         if (uint256(customerPayoutUsdc) + providerRefundUsdc != held) revert InvalidAmount();
         uint64 executeAfter = uint64(block.timestamp + SETTLEMENT_DELAY);
@@ -152,9 +157,16 @@ contract BaseUsdcEscrow {
         PendingSettlement storage p = pendingSettlements[agreementId];
         if (a.status != Status.SettlementPending || (msg.sender != a.provider && msg.sender != a.customer)) revert Unauthorized();
         if (block.timestamp >= p.executeAfter) revert DeadlinePassed();
+        bytes32 claimId = p.claimId;
         p.vetoed = true;
-        a.status = Status.Active;
-        emit SettlementVetoed(agreementId, p.claimId, msg.sender);
+        // A party veto is a durable dispute of this exact finalized claim.
+        // The relayer cannot spin a new proposal and require another veto;
+        // custody stays intact until the settlement-deadline recovery path.
+        disputedClaims[claimId] = true;
+        a.status = Status.Disputed;
+        delete pendingSettlements[agreementId];
+        emit SettlementVetoed(agreementId, claimId, msg.sender);
+        emit ClaimDisputed(agreementId, claimId, msg.sender);
     }
 
     function executeSettlement(uint256 agreementId) external {
@@ -185,7 +197,7 @@ contract BaseUsdcEscrow {
     /// funds until settlementDeadline, then refund original deposits.
     function recoverExpired(uint256 agreementId) external {
         Agreement storage a = agreements[agreementId];
-        if (a.status != Status.Active && a.status != Status.SettlementPending) revert InvalidState();
+        if (a.status != Status.Active && a.status != Status.SettlementPending && a.status != Status.Disputed) revert InvalidState();
         uint256 deadline = a.claimOpen ? a.settlementDeadline : a.claimDeadline;
         if (block.timestamp <= deadline) revert DeadlineNotReached();
         a.status = Status.Expired;

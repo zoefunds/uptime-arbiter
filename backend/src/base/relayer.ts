@@ -28,6 +28,7 @@ const escrowAbi = [
   ], outputs: [] },
   { type: "function", name: "executeSettlement", stateMutability: "nonpayable", inputs: [{ type: "uint256", name: "agreementId" }], outputs: [] },
   { type: "function", name: "consumedClaims", stateMutability: "view", inputs: [{ type: "bytes32", name: "" }], outputs: [{ type: "bool", name: "" }] },
+  { type: "function", name: "disputedClaims", stateMutability: "view", inputs: [{ type: "bytes32", name: "" }], outputs: [{ type: "bool", name: "" }] },
 ] as const;
 
 const account = privateKeyToAccount(config.base.relayerPrivateKey as `0x${string}`);
@@ -170,6 +171,13 @@ export async function reconcileResolvedClaim(args: Parameters<typeof proposeReso
     }
     const txHash = await executeResolvedClaim(args.baseAgreementId);
     return txHash ? { status: "EXECUTED" as const, txHash } : { status: "TIMELOCK" as const, txHash: null };
+  }
+  if (agreement.status === 6) {
+    const disputed = await publicClient.readContract({
+      address: escrow, abi: escrowAbi, functionName: "disputedClaims", args: [claimIdToBytes32(args.claimId)],
+    });
+    if (disputed) throw new Error("The SLA parties vetoed this claim's settlement proposal; Base escrow is durably disputed until bounded recovery.");
+    throw new Error("Base agreement is disputed and cannot accept a new relay proposal");
   }
   if (agreement.status !== 1) throw new Error(`Base agreement is not active (status ${agreement.status})`);
   const txHash = await proposeResolvedClaim(args);

@@ -13,6 +13,7 @@ const FILTERS = [
   { value: "ACTIVE", label: "Active" },
   { value: "CONCLUDED", label: "Concluded" },
   { value: "CANCELLED", label: "Cancelled" },
+  { value: "DISPUTED", label: "Disputed" },
 ];
 
 export default function RegistryPage() {

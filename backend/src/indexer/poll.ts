@@ -28,12 +28,13 @@ import { assertBoundAgreement, readBaseAgreement, reconcileResolvedClaim } from 
  *      a crash.
  */
 
-const NON_TERMINAL_SLA_STATUSES = ["PROPOSED", "ACTIVE", "SETTLEMENT_PENDING"];
+const NON_TERMINAL_SLA_STATUSES = ["PROPOSED", "ACTIVE", "SETTLEMENT_PENDING", "DISPUTED"];
 
 function registryStatus(baseStatus: number | undefined, providerFunded: boolean, customerSigned: boolean) {
   if (baseStatus === 2) return "SETTLEMENT_PENDING";
   if (baseStatus === 3 || baseStatus === 5) return "CONCLUDED";
   if (baseStatus === 4) return "CANCELLED";
+  if (baseStatus === 6) return "DISPUTED";
   if (baseStatus === 1) return "ACTIVE";
   return providerFunded && customerSigned ? "ACTIVE" : "PROPOSED";
 }
@@ -256,7 +257,15 @@ async function discoverNewSlas(budget: Budget): Promise<void> {
 
     for (const id of ids) {
       if (!budget.has()) break;
-      await upsertSla(id);
+      try {
+        await upsertSla(id);
+      } catch (cause) {
+        // A caller can write an untrusted GenLayer record, but it must never
+        // become an indexer cursor DoS that prevents discovery of the real
+        // Base-provider registration behind it. Keep it out of Postgres and
+        // advance the immutable on-chain ID cursor.
+        console.warn(`[indexer] ignoring unauthenticated SLA ${id}:`, cause);
+      }
       budget.spend();
       offset += 1;
     }

@@ -12,7 +12,6 @@ MAX_BODY_BYTES = 12000
 MAX_QUOTE_LEN = 500
 MIN_PUBLICATION_LAG_SECONDS = 300
 MIN_CHALLENGE_WINDOW_SECONDS = 600
-DECISION_TOLERANCE_MINUTES = 5
 INCIDENT_TIME_TOLERANCE_SECONDS = 300
 
 
@@ -58,6 +57,38 @@ def _overlap_minutes(start, end, window_start, window_end):
     return max(0, (right - left + 59) // 60)
 
 
+def _union_overlap_minutes(incidents, window_start, window_end):
+    """Return payable downtime once, even when source intervals overlap.
+
+    A source can legitimately contain a parent incident and a component-level
+    incident with overlapping timestamps. Summing rounded intervals turns that
+    presentation detail into extra USDC, so payable time is the rounded union
+    of included intervals rather than the sum of their individual durations.
+    """
+    intervals = []
+    for incident in incidents:
+        if bool(incident.get("excluded")):
+            continue
+        start = max(window_start, _int(incident.get("start_ts")))
+        end = min(window_end, _int(incident.get("end_ts")))
+        if end > start:
+            intervals.append((start, end))
+    if not intervals:
+        return 0
+    intervals.sort()
+    merged = []
+    for start, end in intervals:
+        if not merged or start > merged[-1][1]:
+            merged.append([start, end])
+        elif end > merged[-1][1]:
+            merged[-1][1] = end
+    return sum((end - start + 59) // 60 for start, end in merged)
+
+
+def _normalized_fact(value, limit=MAX_QUOTE_LEN):
+    return " ".join(bounded_text(value, limit).lower().split())
+
+
 def _median(values):
     if not values:
         return 0
@@ -80,6 +111,8 @@ def _incident_match(left, right):
     if bool(left.get("excluded")) != bool(right.get("excluded")):
         return False
     if bounded_text(left.get("service"), 160).lower() != bounded_text(right.get("service"), 160).lower():
+        return False
+    if not _normalized_fact(left.get("quotation")) or _normalized_fact(left.get("quotation")) != _normalized_fact(right.get("quotation")):
         return False
     return (
         abs(_int(left.get("start_ts")) - _int(right.get("start_ts"))) <= INCIDENT_TIME_TOLERANCE_SECONDS
@@ -108,7 +141,9 @@ def evaluations_equivalent(leader, validator):
         return False
     if _decision_minutes(validator_reports) != _int(validator.get("breach_minutes"), -2):
         return False
-    if abs(_int(leader.get("breach_minutes")) - _int(validator.get("breach_minutes"))) > DECISION_TOLERANCE_MINUTES:
+    # Minutes determine the actual Base USDC payout. Timestamp tolerance is
+    # allowed only where it does not change this exact payable result.
+    if _int(leader.get("breach_minutes")) != _int(validator.get("breach_minutes")):
         return False
 
     for left, right in zip(leader_reports, validator_reports):
@@ -119,7 +154,7 @@ def evaluations_equivalent(leader, validator):
         for field in ("usable", "source_relevant", "covered_service_match"):
             if bool(left.get(field)) != bool(right.get(field)):
                 return False
-        if abs(_int(left.get("breach_minutes")) - _int(right.get("breach_minutes"))) > DECISION_TOLERANCE_MINUTES:
+        if _int(left.get("breach_minutes")) != _int(right.get("breach_minutes")):
             return False
         left_incidents = left.get("incidents") or []
         right_incidents = right.get("incidents") or []
@@ -300,8 +335,13 @@ class UptimeArbiter(gl.Contract):
         exclusion_terms: str,
         provider_base_funding_tx: int,
     ) -> str:
-        binding_key = str(base_agreement_id)
-        require(base_agreement_id > 0 and self.base_agreement_bindings.get(binding_key) is None, "Base agreement already bound or invalid")
+        # GenLayer cannot synchronously read Base state. Scope the reservation
+        # to the registering wallet so an unrelated wallet cannot consume a
+        # global Base ID and permanently block its actual provider. The
+        # frontend/backend then authenticate this sender against Base before
+        # presenting or relaying the record.
+        binding_key = str(base_agreement_id) + ":" + str(gl.message.sender_address).lower()
+        require(base_agreement_id > 0 and self.base_agreement_bindings.get(binding_key) is None, "Provider already registered this Base agreement")
         canonical_terms_hash = canonical_base_tx_hash(base_terms_hash)
         require(3 <= len(evidence_sources) <= MAX_SOURCES and len(set(evidence_sources)) == len(evidence_sources), "Evidence sources invalid")
         require(covered_service.strip() != "" and 5000 <= target_uptime_bps <= 10000, "Service or uptime invalid")
@@ -393,6 +433,12 @@ Use an empty incidents list for no relevant downtime. Mark usable/source_relevan
                     incident_end = min(end, _int(item.get("end_ts")))
                     if incident_end <= incident_start:
                         continue
+                    quotation = bounded_text(item.get("quotation"), MAX_QUOTE_LEN)
+                    # A decision-critical incident needs an attributable quote
+                    # that the fetched source actually contains. This blocks a
+                    # model from inventing an incident from unrelated content.
+                    if not quotation or _normalized_fact(quotation) not in _normalized_fact(body, MAX_BODY_BYTES):
+                        continue
                     incidents.append({
                         "start_ts": incident_start,
                         "end_ts": incident_end,
@@ -405,10 +451,7 @@ Use an empty incidents list for no relevant downtime. Mark usable/source_relevan
                 usable = bool(parsed.get("usable"))
                 relevant = bool(parsed.get("source_relevant"))
                 service_match = bool(parsed.get("covered_service_match"))
-                minutes = sum(
-                    _overlap_minutes(x["start_ts"], x["end_ts"], start, end)
-                    for x in incidents if not x["excluded"]
-                ) if usable and relevant and service_match else 0
+                minutes = _union_overlap_minutes(incidents, start, end) if usable and relevant and service_match else 0
                 return {
                     "source_url": url,
                     "source_fingerprint_sha256": fingerprint,

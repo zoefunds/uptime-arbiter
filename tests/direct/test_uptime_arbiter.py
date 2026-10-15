@@ -97,6 +97,16 @@ def test_unique_base_agreement_binding(direct_vm, direct_deploy, direct_alice, d
         _register(contract, direct_vm, direct_alice, direct_bob, 7)
 
 
+def test_unrelated_sender_cannot_reserve_base_id_against_provider(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    # A malicious wallet can submit a record, but its reservation is scoped to
+    # itself. It cannot consume the Base ID globally and block the provider's
+    # independently authenticated record from reaching the backend.
+    _register(contract, direct_vm, direct_bob, direct_alice, 19)
+    legitimate = _register(contract, direct_vm, direct_alice, direct_bob, 19)
+    assert legitimate == "SLA-2"
+
+
 def test_future_or_unpublished_claim_window_rejected(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract = direct_deploy(CONTRACT)
     sla_id = _register(contract, direct_vm, direct_alice, direct_bob)
@@ -163,8 +173,42 @@ def test_validator_rejects_different_incident_period(direct_vm, direct_deploy):
     assert contract.verify_evaluation_equivalence(json.dumps(shifted), json.dumps(honest)) is False
 
 
-def test_validator_accepts_bounded_timestamp_and_minute_variance(direct_vm, direct_deploy):
+def test_validator_rejects_payout_sensitive_minute_variance(direct_vm, direct_deploy):
     contract = direct_deploy(CONTRACT)
     left = _evaluation(_report(minutes=10, start=1000, end=1600), 10)
     right = _evaluation(_report(minutes=12, start=1100, end=1700), 12)
-    assert contract.verify_evaluation_equivalence(json.dumps(left), json.dumps(right)) is True
+    assert contract.verify_evaluation_equivalence(json.dumps(left), json.dumps(right)) is False
+
+
+def test_validator_accepts_harmless_page_fingerprint_change_but_rejects_quote_change(direct_vm, direct_deploy):
+    contract = direct_deploy(CONTRACT)
+    left = _evaluation(_report(minutes=10), 10)
+    harmless = json.loads(json.dumps(left))
+    for report in harmless["reports"]:
+        report["source_fingerprint_sha256"] = "b" * 64
+    assert contract.verify_evaluation_equivalence(json.dumps(left), json.dumps(harmless)) is True
+
+    material = json.loads(json.dumps(left))
+    material["reports"][0]["incidents"][0]["quotation"] = "A different incident fact."
+    assert contract.verify_evaluation_equivalence(json.dumps(left), json.dumps(material)) is False
+
+
+def test_overlapping_incidents_do_not_double_count_payable_minutes(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    _, claim_id = _activate_and_claim(contract, direct_vm, direct_alice, direct_bob)
+    claim = contract.get_claim(claim_id)
+    start = int(claim["window_start_ts"])
+    body = "Confirmed API disruption from the public status archive."
+    direct_vm.mock_web(r".*status\.example.*", {"status": 200, "body": body})
+    direct_vm.mock_llm(r".*independently auditing.*", json.dumps({
+        "usable": True,
+        "source_relevant": True,
+        "covered_service_match": True,
+        "source_summary": "Status archive",
+        "incidents": [
+            {"start_ts": start, "end_ts": start + 600, "service": "api.example.com production API", "summary": "Parent incident", "quotation": body, "excluded": False, "exclusion_reason": ""},
+            {"start_ts": start + 300, "end_ts": start + 900, "service": "api.example.com production API", "summary": "Component incident", "quotation": body, "excluded": False, "exclusion_reason": ""},
+        ],
+    }))
+    contract.evaluate_claim(claim_id)
+    assert contract.get_claim(claim_id)["breach_minutes"] == 15

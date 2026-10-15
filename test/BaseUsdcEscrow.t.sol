@@ -90,8 +90,8 @@ contract BaseUsdcEscrowTest {
         _eq(usdc.balanceOf(CUSTOMER), 100_000_000, "customer bounded recovery");
     }
 
-    function testPartyCanVetoCompromisedRelayerDistribution() public {
-        (uint256 id,,,) = _activate(10_000_000, 2_000_000);
+    function testVetoDurablyDisputesClaimAndBlocksRepeatedRelay() public {
+        (uint256 id,, uint64 claimDeadline, uint64 settlementDeadline) = _activate(10_000_000, 2_000_000);
         bytes32 claimId = keccak256("claim-veto");
         _openClaim(id, claimId);
         vm.prank(RELAYER);
@@ -101,7 +101,17 @@ contract BaseUsdcEscrowTest {
         vm.warp(block.timestamp + escrow.SETTLEMENT_DELAY());
         vm.expectRevert(BaseUsdcEscrow.InvalidState.selector);
         escrow.executeSettlement(id);
-        _eq(_status(id), uint8(BaseUsdcEscrow.Status.Active), "veto restores active unresolved state");
+        _eq(_status(id), uint8(BaseUsdcEscrow.Status.Disputed), "veto creates durable disputed state");
+        require(escrow.disputedClaims(claimId), "claim should be permanently relay-blocked after veto");
+        vm.prank(RELAYER);
+        vm.expectRevert(BaseUsdcEscrow.BindingMismatch.selector);
+        escrow.proposeAdjudication(id, claimId, keccak256("second-ruling"), 2_000_000, 10_000_000);
+        vm.warp(uint256(claimDeadline) + 1);
+        vm.expectRevert(BaseUsdcEscrow.DeadlineNotReached.selector);
+        escrow.recoverExpired(id);
+        vm.warp(uint256(settlementDeadline) + 1);
+        escrow.recoverExpired(id);
+        _eq(_status(id), uint8(BaseUsdcEscrow.Status.Expired), "disputed claim uses bounded recovery");
     }
 
     function testRelayerCannotSettleDifferentClaim() public {

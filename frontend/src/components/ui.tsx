@@ -33,6 +33,9 @@ function statusTone(status: string) {
   if (["PROVISIONAL_BREACH", "PROVISIONAL_PARTIAL", "FINALIZED_BREACH", "FINALIZED_PARTIAL"].includes(status)) {
     return { bg: "bg-error/10", text: "text-error", dot: "bg-error" };
   }
+  if (status === "DISPUTED") {
+    return { bg: "bg-error/10", text: "text-error", dot: "bg-error animate-pulse" };
+  }
   if (status.includes("INCONCLUSIVE")) {
     return { bg: "bg-outline/10", text: "text-on-surface-variant", dot: "bg-outline" };
   }
