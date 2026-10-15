@@ -1,4 +1,4 @@
-# Uptime Arbiter v0.8 security and enforceability milestone
+# Uptime Arbiter v0.9 security and enforceability milestone
 
 ## Delivered architecture
 
@@ -8,11 +8,11 @@ This milestone completes the split required by the protocol: **GenLayer adjudica
 
 | Layer | Address | Deployment transaction |
 | --- | --- | --- |
-| GenLayer StudioNet v0.8 adjudicator | [`0x92BfA493f7842EA21ED6134C30f8B8fEEd34b188`](https://explorer-studio.genlayer.com/address/0x92BfA493f7842EA21ED6134C30f8B8fEEd34b188) | [`0xb29caf533a05293cc182245b7665bebbc9b0a4cd41e310afbde9ea5a61451483`](https://explorer-studio.genlayer.com/transactions/0xb29caf533a05293cc182245b7665bebbc9b0a4cd41e310afbde9ea5a61451483) |
-| Base Sepolia v0.5 escrow | [`0x3648226dfaBFE79A1Cf0B708880176904b7b1b6c`](https://sepolia.basescan.org/address/0x3648226dfaBFE79A1Cf0B708880176904b7b1b6c) | [`0xd4e697a31bd63eed8d366f785148479864cb6284aa2c77796279aab1390bdc80`](https://sepolia.basescan.org/tx/0xd4e697a31bd63eed8d366f785148479864cb6284aa2c77796279aab1390bdc80) |
+| GenLayer StudioNet v0.9 adjudicator | [`0x73EC2602e25e24FCF642C80642b8541095427Fc4`](https://explorer-studio.genlayer.com/address/0x73EC2602e25e24FCF642C80642b8541095427Fc4) | [`0xd4f87174bf2691fa8d0fc8fb66586c025fa515b855936f58e7e67e924416274d`](https://explorer-studio.genlayer.com/transactions/0xd4f87174bf2691fa8d0fc8fb66586c025fa515b855936f58e7e67e924416274d) |
+| Base Sepolia v0.6 escrow | [`0xa0874a496d7B2997263c06B1698F79462777793e`](https://sepolia.basescan.org/address/0xa0874a496d7B2997263c06B1698F79462777793e) | [`0xd1a578cb4ba05560fd308debd641fe41b8d1e882df93cda7742d3c83b7c59d5b`](https://sepolia.basescan.org/tx/0xd1a578cb4ba05560fd308debd641fe41b8d1e882df93cda7742d3c83b7c59d5b) |
 | Base Sepolia USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) | Circle test token |
 
-The v0.8 deployment finalized with majority validator agreement. Fly (`uptime-arbiter-usdc-api`) and Vercel production both use the v0.8 address. `/healthz` was checked after deployment and reported `database: true` and `redis: true`.
+The v0.9 deployment finalized with majority validator agreement. Fly (`uptime-arbiter-usdc-api`) and Vercel production use the v0.9/v0.6 pair. `/healthz` was checked after migration and reported `database: true` and `redis: true`.
 
 ## Reviewer findings closed
 
@@ -22,20 +22,20 @@ The v0.8 deployment finalized with majority validator agreement. Fly (`uptime-ar
 | Payable minute tolerance could change money | Leader/validator payable minutes must match exactly. |
 | Evidence was weakly attributable | Every decision-critical incident needs a quotation found in the fetched source; report preserves URL, fingerprint, service, timestamps, exclusion and quote. |
 | Overlaps could inflate downtime | Intervals are unioned before minute rounding. |
-| GitHub Status timestamps were model-dependent | v0.8 parses the complete public Statuspage JSON before limiting only the model prompt; its validator-portable RFC3339 parser derives GitHub Actions incident title/component/timestamps. |
+| GitHub Status timestamps were over-broad | v0.9 accepts only the canonical official archive host/path, uses update transitions for actual impairment intervals, and excludes qualifying announced maintenance deterministically. |
 | Base ID could be globally squatted | Reservation is provider-scoped. Backend authenticates the Base provider, parties, terms hash, deposits and deadlines before indexing/relaying; invalid records are skipped without stalling the cursor. |
-| Relayer could repeat after veto | `Disputed` is append-only Base status; veto marks the claim disputed and future proposals for it fail. Funds remain recoverable after the settlement deadline. |
+| A liable provider could veto then reclaim | A veto freezes the exact payout. Original-deposit recovery is disabled while disputed; after a 24-hour review, a separate resolver can re-authorize only that same ruling and restart the ten-minute veto window. |
 | Claims could be future or too fresh | GenLayer enforces completed observation windows, publication lag, service period and filing deadline. |
 | Settlement could bypass a challenge | Evaluation is provisional; one counterparty challenge is bounded and finalization waits for the challenge deadline. |
 | Expiry could erase an unresolved claim | Base preserves timely open claims through settlement deadline, then refunds original deposits through a bounded recovery path. |
 | UI could call a finalized GenLayer error success | The client now requires `FINISHED_WITH_RETURN`; finalized execution errors are surfaced as errors, not timeouts. |
 | DB/receipt state could lie | The relay checks Base receipt status and Base state before marking settlement executed. The database is a non-authoritative mirror. |
 
-## Live v0.8 positive challenged-breach trace
+## Historical v0.8 positive challenged-breach trace
 
-The previous contract mirror was cleared before indexing this deployment: 0 SLAs, 0 claims, 0 challenges, with offsets reset to zero. No user sessions or authentication records were deleted.
+The prior v0.8/v0.5 pair completed the funded trace below. It is retained as historical execution evidence only; its database mirror was cleared before the v0.9/v0.6 migration. No user sessions or authentication records were deleted.
 
-A real, small USDC agreement validates this deployment rather than seeded UI data. v0.8 uses a contract-local RFC3339 parser and parses complete structured Statuspage JSON before applying the prompt cap; this keeps archive size from changing payable evidence facts.
+A real, small USDC agreement validated the historical v0.8/v0.5 deployment rather than seeded UI data. v0.9 supersedes its coarse Statuspage timestamps with canonical-host validation, incident-update impairment intervals, and deterministic maintenance exclusions.
 
 | Step | Public reference |
 | --- | --- |
@@ -58,13 +58,13 @@ The claim covers the completed 12 October 2026 GitHub Actions incident window. T
 Executed locally after the v0.8 change:
 
 ```text
-pytest -q tests/direct/test_uptime_arbiter.py  -> 12 passed
-forge test -vvv                                -> 7 passed
+pytest -q tests/direct/test_uptime_arbiter.py  -> 14 passed
+forge test -vvv                                -> 8 passed
 backend npm run build                          -> passed
 frontend tsc --noEmit + npm run lint           -> passed
 ```
 
-Direct Mode includes adversarial leader-minute, service, maintenance, quotation, timestamp, and Base-ID-squatting cases, plus the Statuspage extractor and overlap case. Foundry includes exact held-balance distributions, mandatory zero-bond acceptance, substituted-claim rejection, unresolved-claim recovery, and a durable-veto regression.
+Direct Mode includes adversarial leader-minute, service, maintenance, quotation, timestamp, spoofed-Statuspage-host, actual-interval, and Base-ID-squatting cases. Foundry includes exact held-balance distributions, mandatory zero-bond acceptance, substituted-claim rejection, near-expiration safety, and a legitimate payout that remains enforceable after a provider veto.
 
 ## Operations and frontend behavior
 

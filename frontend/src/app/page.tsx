@@ -29,7 +29,7 @@ const PIPELINE = [
   {
     step: "05",
     title: "Equivalence",
-    body: "Validators compare a computed breach-minutes number within a tolerance band — never raw text or JSON.",
+    body: "Validators independently derive and require the exact same payable breach-minutes result — never raw text or JSON.",
     state: "EQUIVALENCE",
   },
   {
@@ -148,8 +148,8 @@ export default function LandingPage() {
             <TrustCard
               icon="calculate"
               title="Equivalence on Numbers"
-              body="Validators independently fetch every source and compare the computed breach-minutes number within a tolerance band."
-              footer="Never raw text, never JSON shape"
+              body="Validators independently fetch every source and require exact agreement on every payable breach-minute."
+              footer="Never raw text, never a tolerance band"
             />
             <TrustCard
               icon="account_balance_wallet"

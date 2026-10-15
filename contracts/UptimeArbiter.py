@@ -1,4 +1,4 @@
-# v0.8.0 — full-archive Statuspage facts plus exact-payout evidence consensus.
+# v0.9.0 — canonical Statuspage impairment intervals and enforceable dispute review.
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 import hashlib
@@ -278,8 +278,8 @@ def evaluations_equivalent(leader, validator):
         return False
     if _decision_minutes(validator_reports) != _int(validator.get("breach_minutes"), -2):
         return False
-    # Minutes determine the actual Base USDC payout. Timestamp tolerance is
-    # allowed only where it does not change this exact payable result.
+    # Minutes determine the actual Base USDC payout, so this value is exact.
+    # Source intervals below must likewise be structurally equivalent.
     if _int(leader.get("breach_minutes")) != _int(validator.get("breach_minutes")):
         return False
 

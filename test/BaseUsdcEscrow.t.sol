@@ -92,7 +92,7 @@ contract BaseUsdcEscrowTest {
     }
 
     function testVetoFreezesClaimAndResolverReauthorizesExactPayout() public {
-        (uint256 id,, uint64 claimDeadline, uint64 settlementDeadline) = _activate(10_000_000, 2_000_000);
+        (uint256 id,,, uint64 settlementDeadline) = _activate(10_000_000, 2_000_000);
         bytes32 claimId = keccak256("claim-veto");
         _openClaim(id, claimId);
         vm.prank(RELAYER);

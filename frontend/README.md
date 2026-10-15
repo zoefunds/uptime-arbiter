@@ -9,12 +9,12 @@ Sepolia escrow actions and the distinct GenLayer StudioNet adjudication action.
 | Value | Production setting |
 | --- | --- |
 | App | [uptime-arbiter.vercel.app](https://uptime-arbiter.vercel.app) |
-| GenLayer v0.8 contract | `0x92BfA493f7842EA21ED6134C30f8B8fEEd34b188` |
-| Base v0.5 escrow | `0x3648226dfaBFE79A1Cf0B708880176904b7b1b6c` |
+| GenLayer v0.9 contract | `0x73EC2602e25e24FCF642C80642b8541095427Fc4` |
+| Base v0.6 escrow | `0xa0874a496d7B2997263c06B1698F79462777793e` |
 | Base USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | API | `https://uptime-arbiter-usdc-api.fly.dev` |
 
-The production configuration and API health were rechecked after the v0.8
+The production configuration and API health were rechecked after the v0.9/v0.6
 deployment on 2026-10-15. The registry is backed only by the active contract's
 indexer mirror; that mirror was cleared and its cursor reset during migration.
 
@@ -26,7 +26,7 @@ backend mirror reports `FINALIZED_BREACH` and receipt-verified Base
 `NEXT_PUBLIC_CONTRACT_ADDRESS` is set in Vercel production. The frontend also
 contains the verified final-contract address as a fallback so an absent public
 environment variable cannot silently revive an old contract. The site footer
-renders the active address; users should verify it shows `0x92Bf...b188` before
+renders the active address; users should verify it shows `0x73EC...7Fc4` before
 signing a GenLayer transaction.
 
 ## Registration safety sequence

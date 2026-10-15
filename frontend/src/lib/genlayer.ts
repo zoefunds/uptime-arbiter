@@ -7,7 +7,7 @@ import type { CalldataEncodable } from "genlayer-js/types";
 // deployment. This is the verified StudioNet adjudicator; deployment
 // configuration may override it only for an intentional future migration.
 export const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
-  "0x92BfA493f7842EA21ED6134C30f8B8fEEd34b188") as `0x${string}`;
+  "0x73EC2602e25e24FCF642C80642b8541095427Fc4") as `0x${string}`;
 
 type Eip1193Provider = { request(args: { method: string; params?: unknown[] }): Promise<unknown> };
 const STUDIONET_CHAIN_ID_HEX = `0x${studionet.id.toString(16)}`;

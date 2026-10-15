@@ -12,12 +12,12 @@ custodies user USDC. Base Sepolia's escrow contract is the only asset layer.
 | Fly Postgres | `uptime-arbiter-usdc-db` |
 | API | `https://uptime-arbiter-usdc-api.fly.dev` |
 | Runtime process groups | API and indexer, deployed together from the same image |
-| GenLayer v0.8 contract | `0x92BfA493f7842EA21ED6134C30f8B8fEEd34b188` |
-| Base v0.5 escrow | `0x3648226dfaBFE79A1Cf0B708880176904b7b1b6c` |
+| GenLayer v0.9 contract | `0x73EC2602e25e24FCF642C80642b8541095427Fc4` |
+| Base v0.6 escrow | `0xa0874a496d7B2997263c06B1698F79462777793e` |
 
-The production `/healthz` response was rechecked after the v0.8 deployment on 2026-10-15 and reported both database and Redis checks as healthy. Contract-index rows are cleared before an address switch; the indexer begins at offset zero for the new contract, while auth/session data remains intact.
+The production `/healthz` response was rechecked after the v0.9/v0.6 deployment on 2026-10-15 and reported both database and Redis checks as healthy. Contract-index rows are cleared before an address switch; the indexer begins at offset zero for the new contract, while auth/session data remains intact.
 
-The production indexer completed a challenged-breach relay on 2026-10-15. It
+The prior v0.8/v0.5 production indexer completed a challenged-breach relay on 2026-10-15. It
 recorded `FINALIZED_BREACH` with a one-challenge history, submitted
 [the delayed Base proposal](https://sepolia.basescan.org/tx/0xb10f8e0e4c40e4834ae8196f1914abd44d0982149b995387e813c4984e0ace2d),
 and recorded `EXECUTED` only after [the Base execution receipt](https://sepolia.basescan.org/tx/0x796ea0a1398772f6b4cd15cf34c7904b522c8a9345b13afc63ba43a8fd54ac8b)
@@ -77,8 +77,10 @@ Historical `providerDeposited` and `customerDeposited` struct fields are immutab
 receipt evidence and are not equivalent to the escrow's current distributable
 balance after settlement. Consumers must use the Base lifecycle status together
 with pending-settlement, disputed-claim, and claim-consumption reads. A
-`Disputed` claim is never reproposed by the relay and stays recoverable at the
-bounded settlement deadline. The Base execution receipt—not a local
+`Disputed` claim is never reproposed by the relay and cannot be refunded as its
+original deposits. After the contract's 24-hour review delay, only the separately
+configured resolver can re-authorize the already frozen claim and distribution;
+the escrow then starts a new ten-minute party review. The Base execution receipt—not a local
 transaction-string field—is the authoritative payment proof.
 
 ## Local development

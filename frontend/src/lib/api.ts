@@ -29,7 +29,6 @@ export interface SlaRow {
   bondWei: string;
   bondDeposited: string;
   challengeBondWei: string;
-  toleranceMinutes: number;
   challengeWindowSeconds: number;
   termSeconds: number;
   evidenceSources: string[];
