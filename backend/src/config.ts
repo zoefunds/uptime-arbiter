@@ -40,6 +40,9 @@ export const config = {
     rpcUrl: required("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org"),
     escrowAddress: required("BASE_ESCROW_ADDRESS"),
     relayerPrivateKey: required("BASE_RELAYER_PRIVATE_KEY"),
+    // Deliberately optional for normal API/indexer execution. It is consumed
+    // only by the explicitly invoked dispute-resolution command.
+    disputeResolverPrivateKey: process.env.BASE_DISPUTE_RESOLVER_PRIVATE_KEY ?? "",
   },
 
   indexer: {

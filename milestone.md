@@ -70,6 +70,7 @@ Direct Mode includes adversarial leader-minute, service, maintenance, quotation,
 
 - The frontend switches to Base Sepolia before ERC-20 approvals/funding and to GenLayer for adjudication writes. Submitted → consensus → finalized progress is visible for GenLayer writes.
 - Base writes re-read the injected wallet account after switching networks and let that wallet/RPC estimate gas; no fixed client-side gas ceiling can suppress the signing prompt.
+- Resolver reauthorization is a separately keyed, receipt-checked operator command—not an API route or automatic relayer action—and can only release the on-chain frozen ruling after review.
 - Query surfaces poll every three seconds, refetch on focus/reconnect, and are invalidated after successful writes. Base actions additionally perform a receipt/state readback.
 - The registry contains only rows indexed from the active GenLayer address. It no longer displays static “verification scenarios” as SLAs.
 - A contract migration requires changing Fly/Vercel address configuration, redeploying both, clearing only `SlaAgreement`, `Claim`, `Challenge`, and index offsets, then resetting the cursor. It never deletes Base escrow history.

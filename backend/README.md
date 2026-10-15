@@ -84,6 +84,16 @@ That reauthorization is final for the frozen claim, so it cannot be vetoed in
 an endless loop. The Base execution receipt—not a local
 transaction-string field—is the authoritative payment proof.
 
+The resolver is intentionally not an HTTP endpoint and is never invoked by the
+indexer. After independently reviewing the finalized GenLayer ruling and the
+frozen Base settlement, an authorized operator may run the receipt-checked,
+single-purpose command below. It can re-authorize only the existing frozen
+ruling; it cannot create a new payout or modify any amount.
+
+```bash
+npm run resolve-dispute -- <base-agreement-id>
+```
+
 ## Local development
 
 ```bash

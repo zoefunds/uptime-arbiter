@@ -176,7 +176,7 @@ export async function reconcileResolvedClaim(args: Parameters<typeof proposeReso
     const disputed = await publicClient.readContract({
       address: escrow, abi: escrowAbi, functionName: "disputedClaims", args: [claimIdToBytes32(args.claimId)],
     });
-    if (disputed) throw new Error("The SLA parties vetoed this claim's settlement proposal; Base escrow is durably disputed until bounded recovery.");
+    if (disputed) throw new Error("The SLA parties vetoed this claim's settlement proposal; it is frozen for independent resolver review and cannot be reproposed by the relayer.");
     throw new Error("Base agreement is disputed and cannot accept a new relay proposal");
   }
   if (agreement.status !== 1) throw new Error(`Base agreement is not active (status ${agreement.status})`);

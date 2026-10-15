@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "indexer": "tsx watch src/indexer/poll.ts",
     "indexer:start": "node dist/indexer/poll.js",
+    "resolve-dispute": "node dist/base/resolve-dispute.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev"
