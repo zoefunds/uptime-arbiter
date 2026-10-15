@@ -1,68 +1,53 @@
 # Uptime Arbiter
 
-Uptime Arbiter is a two-chain SLA protocol: GenLayer independently adjudicates public evidence, while Base Sepolia exclusively holds and distributes official USDC. No database row, LLM response, or relayer instruction can directly move customer funds.
+Uptime Arbiter is a two-chain SLA protocol. GenLayer StudioNet adjudicates public uptime evidence; Base Sepolia is the sole USDC custody and settlement layer. Neither an LLM output, an API row, nor a relayer instruction can transfer escrowed funds directly.
 
-## Live deployment
+## Production deployment — 15 October 2026
 
-Production state was re-verified on **2026-10-15 at 07:27 UTC**. The API health check reported both Postgres and Redis healthy, the public registry returned exactly `SLA-1` through `SLA-3`, and Base Sepolia agreement reads matched the lifecycle states documented below.
-
-| Component | Production value |
+| Component | Live value |
 | --- | --- |
-| Web application | [uptime-arbiter.vercel.app](https://uptime-arbiter.vercel.app) |
+| Web app | [uptime-arbiter.vercel.app](https://uptime-arbiter.vercel.app) |
 | API health | [uptime-arbiter-usdc-api.fly.dev/healthz](https://uptime-arbiter-usdc-api.fly.dev/healthz) |
-| GenLayer StudioNet adjudicator | [`0x3C81652798479Af674294155e5bf05C5F42D46f7`](https://explorer-studio.genlayer.com/address/0x3C81652798479Af674294155e5bf05C5F42D46f7) |
-| GenLayer deployment transaction | [`0xab1e9154e40b3708ddf464f8b7df78c0216dcd769ac9bc8b08280f0d6b617d21`](https://explorer-studio.genlayer.com/transactions/0xab1e9154e40b3708ddf464f8b7df78c0216dcd769ac9bc8b08280f0d6b617d21) |
-| Base Sepolia escrow | [`0x72020561a1fF7c95DD13E6Bfa9D3a5fb387072E3`](https://sepolia.basescan.org/address/0x72020561a1fF7c95DD13E6Bfa9D3a5fb387072E3) |
-| Base deployment transaction | [`0xfa0ba68569187030f36e5837517c0ea86a19495f577ee5b769470fa0dd80ea1`](https://sepolia.basescan.org/tx/0xfa0ba68569187030f36e5837517c0ea86a19495f577ee5b769470fa0dd80ea1) |
-| Official Base Sepolia USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
+| GenLayer v0.7 adjudicator | [`0xDF4Ee826F8ffAEC8c11B5eaB3b35D6B3812E1e57`](https://explorer-studio.genlayer.com/address/0xDF4Ee826F8ffAEC8c11B5eaB3b35D6B3812E1e57) |
+| GenLayer deployment | [`0x0368…5448`](https://explorer-studio.genlayer.com/transactions/0x036890a911c0308a62c902400929fa486fec2d372aa26b0422bb4bd84c075448) |
+| Base Sepolia v0.5 escrow | [`0x3648226dfaBFE79A1Cf0B708880176904b7b1b6c`](https://sepolia.basescan.org/address/0x3648226dfaBFE79A1Cf0B708880176904b7b1b6c) |
+| Base deployment | [`0xd4e6…dc80`](https://sepolia.basescan.org/tx/0xd4e697a31bd63eed8d366f785148479864cb6284aa2c77796279aab1390bdc80) |
+| Base Sepolia USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 
-## Security model
+The API health endpoint was checked after deployment and reports healthy Postgres and Redis. Contract-index tables were deliberately cleared and their cursor reset before the new adjudicator was indexed; authentication/session data was not touched.
 
-### Independent GenLayer evidence consensus
+## Security and lifecycle
 
-`contracts/UptimeArbiter.py` v0.4 does not ask validators to approve a leader-shaped return value. The leader and each validator independently fetch every pinned source, treat source bodies as untrusted data, and derive a structured report containing source URL and SHA-256 fingerprint, source relevance, covered-service identity, incident timestamps, short attribution/quotation, exclusion treatment, and breach minutes. Validator equivalence checks independently calculated breach minutes, service relevance, exclusion decisions, and incident periods with narrow timestamp/minute tolerances. A fabricated number, unrelated incident, incompatible maintenance exclusion, or materially different incident period is rejected.
+1. A provider creates and funds a Base agreement; the customer explicitly accepts and funds its bond, including when the bond is zero.
+2. The provider registers the matching Base terms commitment and funding receipt on GenLayer. The backend independently reads the Base agreement before indexing or relaying it.
+3. The customer submits a completed observation window after the configured publication lag. Base locks the same `keccak256(claimId)` before settlement can occur.
+4. Leader and validators each fetch every pinned source and derive structured reports. They must agree exactly on payable minutes, source relevance, service identity, maintenance treatment, verifiable quotations, and incident periods.
+5. A provisional result has one bounded counterparty challenge. Resolution re-runs all evidence; finalization is impossible until the challenge window closes.
+6. The backend derives a Base payout from authenticated terms and a finalized ruling. It proposes a ten-minute-vetoable settlement, verifies successful receipts, and reads Base state before reporting settlement.
 
-### Unique Base/GenLayer binding
+Base separates service coverage, claim filing, and settlement recovery deadlines. A timely claim blocks ordinary expiry. A veto permanently marks that claim `Disputed`, prevents relayer reproposal, and preserves the bounded Base recovery path.
 
-Base commits provider, customer, escrow, bond, four lifecycle deadlines, financial terms, service identity, evidence sources, and exclusions in a `bytes32 termsHash`. GenLayer stores the same canonical hash and permits one adjudication record per Base agreement ID. The backend reads `BaseUsdcEscrow.agreements(id)` and refuses to index or relay when provider, customer, amounts, deadlines, or terms commitment differ. The Base claim lock also binds the agreement to `keccak256(claimId)` so a relayer cannot substitute another ruling.
+## Evidence consensus
 
-### Bounded claims and challenges
+Every validator executes `_collect_evaluation()` itself; it does not merely accept a leader-shaped value. Decision-critical incidents require a quote that appears in the fetched source body. Included intervals are unioned before rounding, so overlapping parent/component records cannot double-count USDC.
 
-Claims must be filed by the recorded customer, lie inside the service period, have a completed observation window, satisfy the configured publication lag, and arrive before the claim deadline. Evaluation produces a provisional outcome. The counterparty has one bounded challenge opportunity with additional public sources and a required rationale; challenged evidence is independently re-evaluated. A claim becomes settlement-eligible only after `finalize_claim` runs after the challenge deadline.
+For GitHub Actions, v0.7 deterministically parses GitHub Status `incidents.json`: the incident title, affected `Actions` component, `created_at`, and `resolved_at` are public source facts. Its small RFC3339 parser is validator-portable, avoiding optional runtime date-parser behavior. Other source formats use the constrained semantic evaluator and the same quote/period equivalence rules. Query variants in the live verification are representations of the same official archive, not falsely described as independent publishers.
 
-### Relayer containment and recovery
+## Cross-chain binding and relayer limits
 
-The Base relayer is a limited operational trust role, not a unilateral payout authority. It can propose only for the exact open claim and must provide a nonzero finalized evidence digest; the distribution must equal all held USDC and the backend derives it from the authenticated Base terms plus finalized GenLayer penalty. Settlement then waits ten minutes. Either party can veto during that delay. Execution rechecks the committed claim and consumes it exactly once. If relay service fails or a claim remains unresolved, funds stay locked only until a separate bounded settlement deadline and can then be recovered. Without a claim, recovery begins after the claim deadline. The service coverage period is therefore distinct from claim and settlement deadlines.
+The Base `termsHash` commits chain, escrow address, participants, deposits, all deadlines, pricing, service, evidence URLs, and exclusions. GenLayer scopes its reservation by `Base agreement ID + registering provider`, so a stranger cannot globally squat a Base ID. The backend rejects unauthenticated/mismatched records and advances its cursor past them, preventing invalid registrations from blocking legitimate indexing.
 
-## End-to-end lifecycle
+The relayer cannot choose arbitrary economics: Base requires the exact open claim, a nonzero ruling hash, unconsumed/undisputed claim ID, and a distribution equal to held USDC. The backend verifies Base/GenLayer parties, terms hash, deposits, and deadlines; it then derives the payout. This remains a deliberately documented operational trust boundary—not a light-client proof—but it is delayed, visible, vetoable, receipt-checked, and bounded by recovery.
 
-1. The provider creates a Base agreement, approves the exact six-decimal USDC amount, and funds escrow.
-2. The frontend decodes the agreement ID from the successful Base receipt and verifies the complete agreement state.
-3. The provider registers the matching terms hash, agreement ID, parties, deadlines, evidence, and Base funding receipt on GenLayer; the app waits for `FINALIZED`, not merely `ACCEPTED`.
-4. The customer explicitly accepts every agreement (including a zero-bond agreement), funds any bond on Base, and records that successful receipt on GenLayer.
-5. A completed claim is finalized on GenLayer and the same claim ID is opened on Base before expiry.
-6. Validators independently retrieve and compare public evidence. A provisional ruling remains challengeable for the committed window.
-7. After finalization, the backend authenticates the entire cross-chain binding, proposes a delayed Base distribution, checks the mined receipt status, and later executes it. Reverted receipts remain recoverable and are never recorded as paid.
-
-Interrupted frontend sequences are resumable. An already-created GenLayer claim whose Base lock did not complete exposes “Resume Base claim lock”; users are not told to resubmit the claim or duplicate a payment.
-
-## Backend and UI consistency
-
-Postgres is only a denormalized index. The indexer reconciles every SLA against Base and uses Base’s lifecycle as authoritative: proposed, active, settlement-pending, settled/expired, or cancelled. GenLayer transaction helpers wait for `FINALIZED` and inspect execution results; Base helpers require a successful receipt and then read authoritative contract state. Registry, SLA, claims, Base agreement, vault, and statistics queries poll every three seconds, refetch on focus/reconnect, and are invalidated immediately after writes.
-
-The production database was cleared during the contract migration without deleting authentication/session data. The visible registry now contains only records from the addresses above. Executed verification scenarios appear as ordinary SLA Registry records rather than synthetic cards or a separate verification page.
-
-The current public registry has three concluded records. `SLA-1` / Base agreement 5 completed the full claim, independent evidence evaluation, challenge-window finalization, delayed settlement, and USDC distribution path. `SLA-2` / agreement 6 and `SLA-3` / agreement 7 completed the bounded expiry-recovery path and hold zero deposits. Base agreements 3 and 4 are cancelled. Agreements 1 and 2 are earlier funded, unclaimed interrupted runs that are intentionally excluded from the GenLayer registry; they become recoverable after their claim deadlines at 2026-10-15 07:44:18 UTC and 07:45:27 UTC respectively.
-
-## Verification suites
+## Verification
 
 ```bash
-pytest -q tests/direct/test_uptime_arbiter.py  # 8 GenLayer Direct Mode tests
-forge test -vvv                              # 7 Base escrow tests
+pytest -q tests/direct/test_uptime_arbiter.py  # 12 passed
+forge test -vvv                                # 7 passed
 cd backend && npm run build
-cd ../frontend && ./node_modules/.bin/tsc --noEmit
+cd frontend && ./node_modules/.bin/tsc --noEmit && npm run lint
 ```
 
-The Direct Mode suite covers unique Base binding, future/unpublished-window rejection, challenge/finalization, fabricated breach values, service mismatch, exclusion disagreement, incident-period disagreement, and bounded timestamp variance. Foundry covers exact partial/no-breach distributions, expiry refunds, mandatory zero-bond acceptance, unresolved-claim preservation and recovery, party veto, and claim-substitution rejection.
+The Direct Mode tests cover future/publication-lag rejection, one-per-provider Base binding, attempted Base-ID squatting, fabricated payout minutes, source/service/exclusion/quote disagreement, overlapping intervals, bounded challenge finalization, and deterministic Statuspage extraction. Foundry covers USDC distributions, zero-bond acceptance, claim substitution, expiry recovery, and durable veto/dispute handling.
 
-See [milestone.md](milestone.md) for the live transaction and balance-evidence record.
+See [milestone.md](milestone.md) for deployment, live transaction, and migration evidence.

@@ -25,7 +25,7 @@ def _warp(direct_vm, seconds):
     direct_vm.warp(datetime.datetime.fromtimestamp(target, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z"))
 
 
-def _register(contract, direct_vm, provider, customer, agreement_id=1):
+def _register(contract, direct_vm, provider, customer, agreement_id=1, sources=SOURCES, service="api.example.com production API"):
     current = _now(direct_vm)
     direct_vm.sender = provider
     return contract.register_adjudication(
@@ -33,7 +33,7 @@ def _register(contract, direct_vm, provider, customer, agreement_id=1):
         int(TERMS_HASH, 16),
         customer,
         "Production API",
-        "api.example.com production API",
+        service,
         9990,
         "10000",
         "1000000",
@@ -44,14 +44,14 @@ def _register(contract, direct_vm, provider, customer, agreement_id=1):
         current + 14400,
         300,
         600,
-        SOURCES,
+        sources,
         "Maintenance announced at least 24 hours before the window is excluded.",
         12345,
     )
 
 
-def _activate_and_claim(contract, direct_vm, provider, customer):
-    sla_id = _register(contract, direct_vm, provider, customer)
+def _activate_and_claim(contract, direct_vm, provider, customer, sources=SOURCES, service="api.example.com production API"):
+    sla_id = _register(contract, direct_vm, provider, customer, sources=sources, service=service)
     direct_vm.sender = customer
     contract.record_base_funding(sla_id, "CUSTOMER", 23456)
     current = _now(direct_vm)
@@ -212,3 +212,31 @@ def test_overlapping_incidents_do_not_double_count_payable_minutes(direct_vm, di
     }))
     contract.evaluate_claim(claim_id)
     assert contract.get_claim(claim_id)["breach_minutes"] == 15
+
+
+def test_github_status_json_yields_verifiable_actions_minutes_without_llm(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    sources = [
+        "https://www.githubstatus.com/api/v2/incidents.json",
+        "https://www.githubstatus.com/api/v2/incidents.json?view=archive",
+        "https://www.githubstatus.com/api/v2/incidents.json?view=timeline",
+    ]
+    _, claim_id = _activate_and_claim(
+        contract, direct_vm, direct_alice, direct_bob,
+        sources=sources, service="GitHub Actions hosted runners",
+    )
+    claim = contract.get_claim(claim_id)
+    start = int(claim["window_start_ts"])
+    incident = {
+        "incidents": [{
+            "name": "Incident with Actions",
+            "created_at": datetime.datetime.fromtimestamp(start + 60, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+            "resolved_at": datetime.datetime.fromtimestamp(start + 660, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+            "components": [{"name": "Actions"}],
+        }]
+    }
+    direct_vm.mock_web(r".*githubstatus\.com/api/v2/incidents.*", {"status": 200, "body": json.dumps(incident)})
+    contract.evaluate_claim(claim_id)
+    evaluated = contract.get_claim(claim_id)
+    assert evaluated["breach_minutes"] == 10
+    assert "Incident with Actions" in evaluated["evidence_report_json"]

@@ -1,4 +1,4 @@
-# v0.4.0 — independently validated evidence; Base Sepolia remains sole custodian.
+# v0.7.0 — validator-portable Statuspage facts plus exact-payout evidence consensus.
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 import hashlib
@@ -87,6 +87,93 @@ def _union_overlap_minutes(incidents, window_start, window_end):
 
 def _normalized_fact(value, limit=MAX_QUOTE_LEN):
     return " ".join(bounded_text(value, limit).lower().split())
+
+
+def _rfc3339_epoch(value):
+    """Parse ``YYYY-MM-DDTHH:MM:SS(.sss)Z`` without runtime date helpers.
+
+    GenVM validators must be able to reproduce the result with the same small
+    deterministic implementation; this avoids depending on optional datetime
+    parsing features in a validator image.
+    """
+    text = bounded_text(value, 64)
+    require(len(text) >= 20 and text[4] == "-" and text[7] == "-" and text[10] == "T", "Invalid Statuspage timestamp")
+    year, month, day = int(text[0:4]), int(text[5:7]), int(text[8:10])
+    hour, minute, second = int(text[11:13]), int(text[14:16]), int(text[17:19])
+    require(1970 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31, "Invalid Statuspage date")
+    days = 0
+    for candidate in range(1970, year):
+        days += 366 if candidate % 4 == 0 and (candidate % 100 != 0 or candidate % 400 == 0) else 365
+    month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    for candidate in range(1, month):
+        days += month_days[candidate - 1]
+        if candidate == 2 and year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
+            days += 1
+    days += day - 1
+    return days * 86400 + hour * 3600 + minute * 60 + second
+
+
+def _github_status_incident_report(url, body, service, start, end, fingerprint):
+    """Extract dated GitHub Actions incidents without asking a model to parse JSON.
+
+    GitHub Status exposes its incident archive as Statuspage JSON.  The fields
+    below are public, quoteable source facts (incident name, affected component,
+    created_at and resolved_at), so parsing them deterministically makes the
+    numerical result reproducible by the leader and every validator.  Returning
+    ``None`` deliberately falls back to the general semantic evaluator for any
+    other evidence format or covered service.
+    """
+    if "githubstatus.com/api/v2/incidents" not in url.lower() or "github actions" not in service.lower():
+        return None
+    try:
+        payload = json.loads(body)
+        raw_incidents = payload.get("incidents") if isinstance(payload, dict) else None
+        if not isinstance(raw_incidents, list):
+            return None
+        incidents = []
+        for item in raw_incidents[:100]:
+            if not isinstance(item, dict):
+                continue
+            components = item.get("components") or []
+            component_names = " ".join(
+                bounded_text(component.get("name"), 160)
+                for component in components if isinstance(component, dict)
+            ).lower()
+            name = bounded_text(item.get("name"), 500)
+            if "actions" not in component_names and "actions" not in name.lower():
+                continue
+            created = bounded_text(item.get("created_at"), 64)
+            resolved = bounded_text(item.get("resolved_at"), 64)
+            if not created or not resolved:
+                continue
+            incident_start = _rfc3339_epoch(created)
+            incident_end = _rfc3339_epoch(resolved)
+            if incident_end <= incident_start or incident_end <= start or incident_start >= end:
+                continue
+            # The incident title is a verbatim JSON value and is retained as
+            # attributable evidence alongside the fingerprint of the fetched body.
+            incidents.append({
+                "start_ts": max(start, incident_start),
+                "end_ts": min(end, incident_end),
+                "service": "GitHub Actions",
+                "summary": name,
+                "quotation": name,
+                "excluded": False,
+                "exclusion_reason": "",
+            })
+        minutes = _union_overlap_minutes(incidents, start, end)
+        return {
+            "source_url": url,
+            "source_fingerprint_sha256": fingerprint,
+            "usable": True,
+            "source_relevant": True,
+            "covered_service_match": True,
+            "source_summary": "GitHub Status incident archive parsed from public timestamped JSON",
+            "incidents": incidents,
+            "breach_minutes": min(minutes, max(0, (end - start) // 60)),
+        }
+    except Exception:
+        return None
 
 
 def _median(values):
@@ -411,6 +498,9 @@ class UptimeArbiter(gl.Contract):
             raw_body = response.body if hasattr(response, "body") else str(response)
             body = (raw_body.decode("utf-8", errors="ignore") if isinstance(raw_body, bytes) else str(raw_body))[:MAX_BODY_BYTES]
             fingerprint = hashlib.sha256(body.encode("utf-8", errors="ignore")).hexdigest()
+            deterministic = _github_status_incident_report(url, body, service, start, end, fingerprint)
+            if deterministic is not None:
+                return deterministic
             prompt = f"""Return JSON only. You are independently auditing one public status source for an SLA.
 Untrusted source URL: {url}
 Covered service (must match semantically, not merely share a vendor): {service}

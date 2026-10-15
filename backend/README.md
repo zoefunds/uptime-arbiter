@@ -12,10 +12,10 @@ custodies user USDC. Base Sepolia's escrow contract is the only asset layer.
 | Fly Postgres | `uptime-arbiter-usdc-db` |
 | API | `https://uptime-arbiter-usdc-api.fly.dev` |
 | Runtime process groups | API and indexer, deployed together from the same image |
-| Final GenLayer contract | `0x3C81652798479Af674294155e5bf05C5F42D46f7` |
-| Base escrow | `0x72020561a1fF7c95DD13E6Bfa9D3a5fb387072E3` |
+| GenLayer v0.7 contract | `0xDF4Ee826F8ffAEC8c11B5eaB3b35D6B3812E1e57` |
+| Base v0.5 escrow | `0x3648226dfaBFE79A1Cf0B708880176904b7b1b6c` |
 
-The production `/healthz` response was rechecked on 2026-10-15 at 07:27 UTC and reported both database and Redis checks as healthy. `/slas` returned exactly the three final-contract records (`SLA-1`–`SLA-3`); no rows from an earlier contract remain.
+The production `/healthz` response was rechecked after the v0.7 deployment on 2026-10-15 and reported both database and Redis checks as healthy. Contract-index rows were cleared before the address switch; the indexer begins at offset zero for the new contract, while auth/session data remains intact.
 
 `fly.toml` runs two always-on process groups from the same image:
 
@@ -63,23 +63,17 @@ ten-minute delay. Execution is recorded only when the Base receipt succeeds
 and a read-back reports `Settled`; a mined revert stays unpaid/recoverable.
 
 The indexer treats Base as lifecycle authority. Active, settlement-pending,
-settled, cancelled, and expired states are read from escrow rather than inferred
+disputed, settled, cancelled, and expired states are read from escrow rather than inferred
 from historical GenLayer funding acknowledgments, so a refunded agreement
 cannot remain displayed as active.
 
 Historical `providerDeposited` and `customerDeposited` struct fields are immutable
 receipt evidence and are not equivalent to the escrow's current distributable
 balance after settlement. Consumers must use the Base lifecycle status together
-with pending-settlement and claim-consumption reads. In the verified production
-snapshot, agreement 5 is `Settled`, agreements 6 and 7 are `Expired`, agreements
-3 and 4 are `Cancelled`, and the earlier unregistered agreements 1 and 2 remain
-`Active` without open claims until their claim-deadline recovery paths open.
-
-`CLM-1` is finalized as `FINALIZED_NO_BREACH`; its settlement status is
-`EXECUTED`, evidence digest is
-`0x84dd2e34428290a3093032267a205b400d3c59a32ecc7e7533cc27468484a660`,
-and Base reports the corresponding claim hash consumed. The Base execution
-receipt—not a local transaction-string field—is the authoritative payment proof.
+with pending-settlement, disputed-claim, and claim-consumption reads. A
+`Disputed` claim is never reproposed by the relay and stays recoverable at the
+bounded settlement deadline. The Base execution receipt—not a local
+transaction-string field—is the authoritative payment proof.
 
 ## Local development
 
