@@ -197,10 +197,9 @@ export async function writeBaseContract(
 ) {
   if (!BASE_ESCROW_ADDRESS) throw new Error("Base escrow is not configured");
   const client = createWalletClient({ account, chain: baseSepolia, transport: custom(provider as Parameters<typeof custom>[0]) });
-  // Some injected wallets return their chain maximum when estimating a
-  // reverting/under-approved ERC-20 call, then reject the transaction before
-  // showing the user a confirmation. The escrow methods are bounded well
-  // below this limit; supplying it preserves the normal wallet flow while
-  // still allowing the EVM to report an actual contract revert if needed.
-  return client.writeContract({ address, abi, functionName: functionName as never, args: args as never, gas: 300_000n });
+  // Let the selected Base wallet/RPC estimate the call after the explicit
+  // network switch. Supplying a fixed gas ceiling can itself be rejected by
+  // a wallet with a lower configured transaction maximum, before the user
+  // even gets a signing prompt.
+  return client.writeContract({ address, abi, functionName: functionName as never, args: args as never });
 }

@@ -17,7 +17,10 @@ const DAY = 24 * 3600;
 // evidence sources a GenLayer validator can actually fetch and parse, used
 // here purely to make testing the form fast. Not fabricated placeholders.
 const SAMPLE_SOURCES = [
-  "https://www.githubstatus.com/api/v2/summary.json",
+  // This is the canonical URL that activates the deterministic GitHub
+  // Statuspage parser in the adjudicator. Do not replace it with a similar
+  // host/path: authoritative-path validation is intentional.
+  "https://www.githubstatus.com/api/v2/incidents.json",
   "https://status.openai.com/api/v2/summary.json",
   "https://status.aws.amazon.com/rss/ec2-us-east-1.rss",
 ];

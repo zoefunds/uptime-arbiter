@@ -17,10 +17,12 @@ Sepolia escrow actions and the distinct GenLayer StudioNet adjudication action.
 The production configuration and API health were rechecked after the v0.9/v0.7
 deployment on 2026-10-15. The registry is backed only by the active contract's
 indexer mirror; that mirror was cleared and its cursor reset during migration.
+Base writes explicitly switch to Base Sepolia, confirm the selected account,
+and rely on the wallet/RPC's gas estimate instead of imposing a fixed
+client-side gas limit.
 
-The active registry has also completed a real challenged breach: the frontend's
-backend mirror reports `FINALIZED_BREACH` and receipt-verified Base
-`EXECUTED`, rather than a static test card. The public Base execution is
+The historical v0.8/v0.5 deployment completed a real challenged breach rather
+than a static test card. Its receipt-verified Base execution is
 [0x796e…ac8b](https://sepolia.basescan.org/tx/0x796ea0a1398772f6b4cd15cf34c7904b522c8a9345b13afc63ba43a8fd54ac8b).
 
 `NEXT_PUBLIC_CONTRACT_ADDRESS` is set in Vercel production. The frontend also
