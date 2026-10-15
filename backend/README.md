@@ -78,20 +78,24 @@ receipt evidence and are not equivalent to the escrow's current distributable
 balance after settlement. Consumers must use the Base lifecycle status together
 with pending-settlement, disputed-claim, and claim-consumption reads. A
 `Disputed` claim is never reproposed by the relay and cannot be refunded as its
-original deposits. After the contract's 24-hour review delay, only the separately
-configured resolver can re-authorize the already frozen claim and distribution.
-That reauthorization is final for the frozen claim, so it cannot be vetoed in
-an endless loop. The Base execution receipt—not a local
+original deposits. A separately keyed verifier first reconciles the finalized
+GenLayer digest and derives the corrected allocation; it may attest that result
+or reject the unsupported proposal. After the contract's 24-hour review delay,
+the separately configured resolver can apply only the verifier's attestation.
+If the resolver remains unavailable for another 24 hours, applying that same
+attestation becomes permissionless. The Base execution receipt—not a local
 transaction-string field—is the authoritative payment proof.
 
-The resolver is intentionally not an HTTP endpoint and is never invoked by the
-indexer. After independently reviewing the finalized GenLayer ruling and the
-frozen Base settlement, an authorized operator may run the receipt-checked,
-single-purpose command below. It can re-authorize only the existing frozen
-ruling; it cannot create a new payout or modify any amount.
+Neither verifier nor resolver is an HTTP endpoint or an indexer action. The
+receipt-checked command reads the finalized GenLayer claim itself, derives the
+payout, has the verifier attest it, then asks the distinct resolver to apply
+exactly that record. Operators must preserve separate custody and an auditable
+authorization trail. If both keys disappear, the 30-day abandonment path still
+requires both SLA parties; it intentionally cannot guarantee unilateral
+recovery because that would let a liable party erase an award.
 
 ```bash
-npm run resolve-dispute -- <base-agreement-id>
+npm run resolve-dispute -- <base-agreement-id> <genlayer-claim-id>
 ```
 
 ## Local development

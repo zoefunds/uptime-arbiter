@@ -95,7 +95,7 @@ export default function LandingPage() {
                 </h2>
               </div>
               <span className="font-mono text-xs text-on-surface-variant">
-                Deterministic • Non-Custodial • Zero-Oracle Trust
+                Deterministic custody • Explicit verifier trust boundary
               </span>
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-6">
@@ -138,7 +138,7 @@ export default function LandingPage() {
             to perform non-deterministic web fetches and reach consensus on a single computed
             number — never on a claimant&apos;s word, never on a centralized backend&apos;s opinion.
           </p>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
             <TrustCard
               icon="lock_clock"
               title="Strict Additive Evidence"
@@ -154,8 +154,14 @@ export default function LandingPage() {
             <TrustCard
               icon="account_balance_wallet"
               title="Decoupled Settlement"
-              body="A fully deterministic function — untouched by any LLM or validator — turns agreed breach-minutes into a capped USDC payout on Base Sepolia."
+              body="Base applies deterministic USDC arithmetic. A separately keyed verifier authenticates disputed cross-chain rulings before a distinct resolver can apply them."
               footer="payout = breach_minutes × rate, capped at escrow"
+            />
+            <TrustCard
+              icon="key"
+              title="Disclosed Recovery Limit"
+              body="Verifier and resolver keys are operational trust authorities. If both disappear, abandonment waits 30 days and still requires both SLA parties."
+              footer="No unilateral refund can erase a valid award"
             />
           </div>
         </div>

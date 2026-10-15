@@ -13,11 +13,6 @@ export const baseEscrowAbi = [
   { type: "function", name: "fundProvider", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }], outputs: [] },
   { type: "function", name: "acceptAndFundCustomer", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }], outputs: [] },
   { type: "function", name: "openClaim", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }, { name: "claimId", type: "bytes32" }, { name: "observedWindowEnd", type: "uint64" }], outputs: [] },
-  { type: "function", name: "vetoSettlement", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }], outputs: [] },
-  { type: "function", name: "reauthorizeDisputedSettlement", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }], outputs: [] },
-  { type: "function", name: "disputeResolver", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
-  { type: "function", name: "disputedClaims", stateMutability: "view", inputs: [{ name: "claimId", type: "bytes32" }], outputs: [{ name: "", type: "bool" }] },
-  { type: "function", name: "executeSettlement", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }], outputs: [] },
   {
     type: "function", name: "agreements", stateMutability: "view", inputs: [{ name: "agreementId", type: "uint256" }],
     outputs: [

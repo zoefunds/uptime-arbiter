@@ -1,4 +1,5 @@
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x700D935A78562Dd5FBdfA603bbb5E00C9f521D81";
+const BASE_ESCROW_ADDRESS = process.env.NEXT_PUBLIC_BASE_ESCROW_ADDRESS || "0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d";
 
 export function SiteFooter() {
   return (
@@ -19,7 +20,15 @@ export function SiteFooter() {
             rel="noreferrer"
             className="font-mono text-xs text-on-surface-variant transition-colors hover:text-primary"
           >
-            Contract: {CONTRACT_ADDRESS.slice(0, 6)}...{CONTRACT_ADDRESS.slice(-4)}
+            GenLayer: {CONTRACT_ADDRESS.slice(0, 6)}...{CONTRACT_ADDRESS.slice(-4)}
+          </a>
+          <a
+            href={`https://sepolia.basescan.org/address/${BASE_ESCROW_ADDRESS}`}
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono text-xs text-on-surface-variant transition-colors hover:text-primary"
+          >
+            Base escrow: {BASE_ESCROW_ADDRESS.slice(0, 6)}...{BASE_ESCROW_ADDRESS.slice(-4)}
           </a>
           <a
             href="https://docs.genlayer.com"

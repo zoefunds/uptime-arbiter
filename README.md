@@ -13,6 +13,7 @@ Uptime Arbiter is a two-chain SLA protocol. GenLayer StudioNet adjudicates publi
 | Base Sepolia v0.8 escrow | [`0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d`](https://sepolia.basescan.org/address/0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d) |
 | Base deployment | [`0x7b67…4eb2`](https://sepolia.basescan.org/tx/0x7b67ccfce0b7606d523a3ecf1e5d30350554a623bbacd188543c2f4c836b4eb2) |
 | Base Sepolia USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
+| Public deployment manifest | [`/api/deployment`](https://uptime-arbiter.vercel.app/api/deployment) |
 
 The API health endpoint was checked after deployment and reports healthy Postgres and Redis. The contract mirror was inspected after the address switch and contained zero SLAs, claims, and challenges with cursor `0/0`; no destructive delete was needed and authentication/session data was untouched.
 
@@ -34,6 +35,18 @@ successful Base receipt, and reread escrow state before marking it executed.
 - [Finalized GenLayer ruling](https://explorer-studio.genlayer.com/transactions/0x612b8254f54ee8148a26a115748690dcb9237c1277dfc77cd65d03c461788020)
 - [Base settlement proposal](https://sepolia.basescan.org/tx/0xb10f8e0e4c40e4834ae8196f1914abd44d0982149b995387e813c4984e0ace2d)
 - [Receipt-verified Base execution](https://sepolia.basescan.org/tx/0x796ea0a1398772f6b4cd15cf34c7904b522c8a9345b13afc63ba43a8fd54ac8b)
+
+## Current-version funded evidence
+
+The canonical v0.10/v0.8 pair now has a funded 0.120000-USDC cross-chain
+agreement visible as `SLA-1` in the production registry. Its completed-window
+claim reached finalized GenLayer consensus. A deliberately unsupported relay
+allocation was then [proposed](https://sepolia.basescan.org/tx/0x334a9dadb2bf5832e5e13ff3c1207caa838b1590464d5c03d6cc9e23da8ccec9)
+and [vetoed by the customer](https://sepolia.basescan.org/tx/0x621ddc551b535a3b83df9afe16740515894401dbfc116457dae241ffb7443ad5).
+No USDC moved. The verifier rejection is intentionally unavailable until the
+contract's real 24-hour review delay ends on 16 October 2026 at 21:05:34 WAT;
+the pending step and every preceding receipt are documented in
+[milestone.md](milestone.md).
 
 ## Security and lifecycle
 
@@ -57,6 +70,16 @@ For GitHub Actions, v0.10 accepts only the canonical official HTTPS incident arc
 The Base `termsHash` commits chain, escrow address, participants, deposits, all deadlines, pricing, service, evidence URLs, and exclusions. GenLayer scopes its reservation by `Base agreement ID + registering provider`, so a stranger cannot globally squat a Base ID. The backend rejects unauthenticated/mismatched records and advances its cursor past them, preventing invalid registrations from blocking legitimate indexing.
 
 The relayer cannot decide the final economics of a disputed proposal. Base requires the exact open claim, a nonzero ruling hash, and a distribution equal to held USDC. After veto, a distinct ruling verifier must authenticate the claim digest and corrected allocation; a distinct resolver can apply only that verified record. The verifier can instead reject a fabricated proposal and reopen recovery. A permissionless delayed fallback prevents resolver unavailability from locking a verified award, while mutual-consent-only abandonment prevents unilateral escape.
+
+The verifier remains an explicit trusted operational authority rather than a
+cryptographic StudioNet light client. Its key must be held separately from the
+owner, relayer, and resolver, and every attestation must be reconciled against
+the finalized GenLayer claim and retained in an auditable transaction record.
+If both verifier and resolver are unavailable, the contract does not grant
+either party a unilateral refund: after 30 days, abandonment still requires
+both provider and customer consent. This protects an award from unilateral
+erasure but cannot guarantee recovery when both authorities and one party are
+permanently unavailable.
 
 ## Verification
 

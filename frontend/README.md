@@ -13,6 +13,7 @@ Sepolia escrow actions and the distinct GenLayer StudioNet adjudication action.
 | Base v0.8 escrow | `0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d` |
 | Base USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | API | `https://uptime-arbiter-usdc-api.fly.dev` |
+| Deployment manifest | `https://uptime-arbiter.vercel.app/api/deployment` |
 
 The production configuration uses the v0.10/v0.8 deployment. The registry is backed only by the active contract's
 indexer mirror; that mirror was cleared and its cursor reset during migration.
@@ -27,8 +28,12 @@ than a static test card. Its receipt-verified Base execution is
 `NEXT_PUBLIC_CONTRACT_ADDRESS` is set in Vercel production. The frontend also
 contains the verified final-contract address as a fallback so an absent public
 environment variable cannot silently revive an old contract. The site footer
-renders the active address; users should verify it shows `0x700D...1D81` before
-signing a GenLayer transaction.
+renders explorer links for both active addresses on every route; users should
+verify GenLayer `0x700D...1D81` and Base `0x9d8A...0d6d` before signing.
+
+The browser ABI contains only functions invoked by public user flows. Removed
+legacy methods such as `reauthorizeDisputedSettlement` are intentionally absent;
+verifier and resolver operations are isolated backend/operator procedures.
 
 ## Registration safety sequence
 
@@ -67,6 +72,12 @@ The production statistic values are backend aggregates of the GenLayer mirror
 and Base funding reads. They are not seeded test results and should be treated
 as a live operational view, with Base Sepolia remaining the monetary source of
 truth.
+
+On 15 October 2026 the production registry was browser-checked after deployment:
+it rendered the funded current-version `SLA-1`, provider/customer addresses,
+0.100000-USDC provider escrow, `ACTIVE` state, and footer links to GenLayer
+`0x700D…1D81` and Base `0x9d8A…0d6d`. A cache-resistant JSON copy of the same
+canonical deployment is available at `/api/deployment`.
 
 Lifecycle labels are derived from authoritative Base state rather than old
 GenLayer funding acknowledgments. Settled, expired, and cancelled agreements

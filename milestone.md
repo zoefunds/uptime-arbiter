@@ -38,7 +38,7 @@ prevent any two roles from being the same address.
 | Payable minute tolerance could change money | Leader/validator payable minutes must match exactly. |
 | Evidence was weakly attributable | Every decision-critical incident needs a quotation found in the fetched source; report preserves URL, fingerprint, service, timestamps, exclusion and quote. |
 | Overlaps could inflate downtime | Intervals are unioned before minute rounding. |
-| GitHub Status timestamps were over-broad | v0.9 accepts only the canonical official archive host/path, uses update transitions for actual impairment intervals, and excludes qualifying announced maintenance deterministically. |
+| GitHub Status timestamps were over-broad | v0.10 accepts only the canonical official archive host/path, uses update transitions for actual impairment intervals, and excludes qualifying announced maintenance deterministically. |
 | Base ID could be globally squatted | Reservation is provider-scoped. Backend authenticates the Base provider, parties, terms hash, deposits and deadlines before indexing/relaying; invalid records are skipped without stalling the cursor. |
 | A veto could lock funds or preserve a malicious relay allocation | Veto blocks the relayer. A separate verifier can reject the proposal or attest a corrected claim digest/allocation; the resolver can apply only that attestation. Anyone can apply an attested ruling after the resolver grace period. Abandonment refund requires both parties, so neither can nullify a valid award alone. |
 | Operational roles could collapse into one key | Owner, relayer, resolver, and verifier must be pairwise distinct in the constructor and every role setter. |
@@ -49,6 +49,56 @@ prevent any two roles from being the same address.
 | Expiry could erase an unresolved claim | Base preserves timely open claims through settlement deadline, then refunds original deposits through a bounded recovery path. |
 | UI could call a finalized GenLayer error success | The client now requires `FINISHED_WITH_RETURN`; finalized execution errors are surfaced as errors, not timeouts. |
 | DB/receipt state could lie | The relay checks Base receipt status and Base state before marking settlement executed. The database is a non-authoritative mirror. |
+
+## Current v0.10/v0.8 funded cross-chain evidence
+
+Agreement `2` is a fresh, real 0.120000-USDC lifecycle on the canonical
+contracts, not seeded UI data. The provider deposited 0.100000 USDC and the
+customer accepted with a 0.020000-USDC bond. GenLayer `SLA-1` commits the exact
+Base agreement ID and `termsHash`
+`0xbf4353a137bc27f766e66d30cdf340a49b4c7a90cc7904c4b5475497e48bb18d`.
+The production indexer mirrored it and the public registry rendered it as an
+active SLA with both current explorer-linked contract addresses.
+
+| Step | Public transaction |
+| --- | --- |
+| Base agreement 2 proposal | [`0xfcfe4b22b920a7ca954065380852ebc0f01a47ae046c06c085221ae4ea5a5e00`](https://sepolia.basescan.org/tx/0xfcfe4b22b920a7ca954065380852ebc0f01a47ae046c06c085221ae4ea5a5e00) |
+| Provider USDC approval | [`0x85f5b95d0cd93025a819b30932b32ec63d267fdb5b0e36ad13486109b113094e`](https://sepolia.basescan.org/tx/0x85f5b95d0cd93025a819b30932b32ec63d267fdb5b0e36ad13486109b113094e) |
+| Provider 0.100000-USDC funding | [`0x12d7a640f5dd4811ab7454649afb774bde4f391e34a84e9d705845d9f4dc6a86`](https://sepolia.basescan.org/tx/0x12d7a640f5dd4811ab7454649afb774bde4f391e34a84e9d705845d9f4dc6a86) |
+| Customer USDC approval | [`0xf03969ca95d86d34c89754e521b9437d0e9b76ce8fe1992ab0078411aa945447`](https://sepolia.basescan.org/tx/0xf03969ca95d86d34c89754e521b9437d0e9b76ce8fe1992ab0078411aa945447) |
+| Customer 0.020000-USDC funding | [`0x5341d88e4b664b729020759f89ac0cbcd38f604d7ad6e5bd7eea02964eb32e6c`](https://sepolia.basescan.org/tx/0x5341d88e4b664b729020759f89ac0cbcd38f604d7ad6e5bd7eea02964eb32e6c) |
+| GenLayer registration | [`0xa7652ddd666b2b7d89b07d68f0d391957eb9a0d65021cf23eca8f85d2cfd7c62`](https://explorer-studio.genlayer.com/transactions/0xa7652ddd666b2b7d89b07d68f0d391957eb9a0d65021cf23eca8f85d2cfd7c62) |
+| GenLayer customer-funding acknowledgement | [`0x75c809e9ec3190bcde3fc87917b21229e1db834155494e42dc7702bafae80bb2`](https://explorer-studio.genlayer.com/transactions/0x75c809e9ec3190bcde3fc87917b21229e1db834155494e42dc7702bafae80bb2) |
+| GenLayer completed-window claim | [`0xbbac31abfc4e347ddb7038c95d940c96e73101ae3cbcd3cc3445c6e384ceadc8`](https://explorer-studio.genlayer.com/transactions/0xbbac31abfc4e347ddb7038c95d940c96e73101ae3cbcd3cc3445c6e384ceadc8) |
+| Matching Base claim lock | [`0xa07dfcda2ba79edd114f7d1a576475b1395643e5c27a64404c0a7f77c13e5027`](https://sepolia.basescan.org/tx/0xa07dfcda2ba79edd114f7d1a576475b1395643e5c27a64404c0a7f77c13e5027) |
+| Independent GenLayer evaluation | [`0xdeec7fed715831ff06970c07c21e504840682385981ac50280224a4a7855f225`](https://explorer-studio.genlayer.com/transactions/0xdeec7fed715831ff06970c07c21e504840682385981ac50280224a4a7855f225) |
+| Final claim after the full challenge window | [`0x506b7bb546110d377290075ff6a90e9d5e8b26188de91c46453e559b2e6fcc57`](https://explorer-studio.genlayer.com/transactions/0x506b7bb546110d377290075ff6a90e9d5e8b26188de91c46453e559b2e6fcc57) |
+| Deliberately unsupported relayer allocation | [`0x334a9dadb2bf5832e5e13ff3c1207caa838b1590464d5c03d6cc9e23da8ccec9`](https://sepolia.basescan.org/tx/0x334a9dadb2bf5832e5e13ff3c1207caa838b1590464d5c03d6cc9e23da8ccec9) |
+| Customer veto during mandatory delay | [`0x621ddc551b535a3b83df9afe16740515894401dbfc116457dae241ffb7443ad5`](https://sepolia.basescan.org/tx/0x621ddc551b535a3b83df9afe16740515894401dbfc116457dae241ffb7443ad5) |
+
+The evaluation finalized after two consensus rounds with three final `AGREE`
+votes. It conservatively returned `PROVISIONAL_INCONCLUSIVE`: GitHub was the
+only source relevant to the covered GitHub Actions service, while the OpenAI
+and AWS sources correctly reported service mismatch. No fabricated breach or
+payout was inferred from unrelated sources.
+
+After the full ten-minute GenLayer challenge window, the claim finalized as
+`FINALIZED_INCONCLUSIVE`. To exercise the compromised-relayer defense, the
+isolated relayer proposed the entire 0.120000-USDC balance to the customer even
+though that allocation is unsupported by the ruling. The customer vetoed it
+successfully. On-chain readback now reports status `Disputed` (`6`), the frozen
+claim hash and evidence digest above, payout `120000`, refund `0`, and
+`vetoed=true`; no USDC moved. The verifier must reject this proposal rather
+than attest it. The contract's safety delay makes rejection eligible at
+**16 October 2026, 21:05:34 WAT**. This timestamp is documented explicitly;
+the delay was not bypassed or simulated and the unfinished rejection is not
+misrepresented as completed evidence.
+
+The first attempted registration, transaction
+[`0xeb2a…beff`](https://explorer-studio.genlayer.com/transactions/0xeb2a4abb441a5790b22e27daefa6df28257fdc739ba76122062520b844c5beff),
+was intentionally not counted as success: v0.10 rolled it back with
+`[EXPECTED] Evidence sources invalid` because only one source was supplied.
+This is retained as public negative-path evidence.
 
 ## Historical v0.8 positive challenged-breach trace
 
