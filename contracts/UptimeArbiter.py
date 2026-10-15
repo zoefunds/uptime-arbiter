@@ -1,4 +1,4 @@
-# v0.7.0 — validator-portable Statuspage facts plus exact-payout evidence consensus.
+# v0.8.0 — full-archive Statuspage facts plus exact-payout evidence consensus.
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 import hashlib
@@ -496,9 +496,13 @@ class UptimeArbiter(gl.Contract):
         try:
             response = gl.nondet.web.get(url)
             raw_body = response.body if hasattr(response, "body") else str(response)
-            body = (raw_body.decode("utf-8", errors="ignore") if isinstance(raw_body, bytes) else str(raw_body))[:MAX_BODY_BYTES]
-            fingerprint = hashlib.sha256(body.encode("utf-8", errors="ignore")).hexdigest()
-            deterministic = _github_status_incident_report(url, body, service, start, end, fingerprint)
+            full_body = raw_body.decode("utf-8", errors="ignore") if isinstance(raw_body, bytes) else str(raw_body)
+            # Archive JSON can exceed the model-prompt cap.  Parse the complete
+            # machine-readable record first, then cap only the untrusted text
+            # provided to the semantic fallback.
+            body = full_body[:MAX_BODY_BYTES]
+            fingerprint = hashlib.sha256(full_body.encode("utf-8", errors="ignore")).hexdigest()
+            deterministic = _github_status_incident_report(url, full_body, service, start, end, fingerprint)
             if deterministic is not None:
                 return deterministic
             prompt = f"""Return JSON only. You are independently auditing one public status source for an SLA.

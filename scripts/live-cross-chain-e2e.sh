@@ -7,7 +7,7 @@ set -euo pipefail
 BASE_RPC="${BASE_RPC:-https://sepolia.base.org}"
 BASE_ESCROW="${BASE_ESCROW:-0x3648226dfaBFE79A1Cf0B708880176904b7b1b6c}"
 USDC="${USDC:-0x036CbD53842c5426634e7929541eC2318f3dCF7e}"
-GEN_CONTRACT="${GEN_CONTRACT:-0xDF4Ee826F8ffAEC8c11B5eaB3b35D6B3812E1e57}"
+GEN_CONTRACT="${GEN_CONTRACT:-0x92BfA493f7842EA21ED6134C30f8B8fEEd34b188}"
 PROVIDER_KEYSTORE="${PROVIDER_KEYSTORE:?set PROVIDER_KEYSTORE}"
 CUSTOMER_KEYSTORE="${CUSTOMER_KEYSTORE:?set CUSTOMER_KEYSTORE}"
 KEYSTORE_PASSWORD="${KEYSTORE_PASSWORD:?set KEYSTORE_PASSWORD}"
@@ -68,7 +68,7 @@ setup_scenario() {
   now="$(date +%s)"; term_start="$((now - 7200))"
   registration="$((now + registration_offset))"; service_end="$((now + service_offset))"
   claim_deadline="$((now + claim_offset))"; settlement_deadline="$((now + settlement_offset))"
-  escrow=100000; bond=20000; label="Uptime Arbiter v0.6 live E2E ${scenario}"
+  escrow=100000; bond=20000; label="Uptime Arbiter v0.8 live E2E ${scenario}"
   terms="$(terms_hash "$escrow" "$bond" "$registration" "$service_end" "$claim_deadline" "$settlement_deadline" "$label")"
   agreement="$(cast call "$BASE_ESCROW" 'nextAgreementId()(uint256)' --rpc-url "$BASE_RPC")"
 

@@ -8,8 +8,8 @@ Uptime Arbiter is a two-chain SLA protocol. GenLayer StudioNet adjudicates publi
 | --- | --- |
 | Web app | [uptime-arbiter.vercel.app](https://uptime-arbiter.vercel.app) |
 | API health | [uptime-arbiter-usdc-api.fly.dev/healthz](https://uptime-arbiter-usdc-api.fly.dev/healthz) |
-| GenLayer v0.7 adjudicator | [`0xDF4Ee826F8ffAEC8c11B5eaB3b35D6B3812E1e57`](https://explorer-studio.genlayer.com/address/0xDF4Ee826F8ffAEC8c11B5eaB3b35D6B3812E1e57) |
-| GenLayer deployment | [`0x0368…5448`](https://explorer-studio.genlayer.com/transactions/0x036890a911c0308a62c902400929fa486fec2d372aa26b0422bb4bd84c075448) |
+| GenLayer v0.8 adjudicator | [`0x92BfA493f7842EA21ED6134C30f8B8fEEd34b188`](https://explorer-studio.genlayer.com/address/0x92BfA493f7842EA21ED6134C30f8B8fEEd34b188) |
+| GenLayer deployment | [`0xb29c…1483`](https://explorer-studio.genlayer.com/transactions/0xb29caf533a05293cc182245b7665bebbc9b0a4cd41e310afbde9ea5a61451483) |
 | Base Sepolia v0.5 escrow | [`0x3648226dfaBFE79A1Cf0B708880176904b7b1b6c`](https://sepolia.basescan.org/address/0x3648226dfaBFE79A1Cf0B708880176904b7b1b6c) |
 | Base deployment | [`0xd4e6…dc80`](https://sepolia.basescan.org/tx/0xd4e697a31bd63eed8d366f785148479864cb6284aa2c77796279aab1390bdc80) |
 | Base Sepolia USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
@@ -31,7 +31,7 @@ Base separates service coverage, claim filing, and settlement recovery deadlines
 
 Every validator executes `_collect_evaluation()` itself; it does not merely accept a leader-shaped value. Decision-critical incidents require a quote that appears in the fetched source body. Included intervals are unioned before rounding, so overlapping parent/component records cannot double-count USDC.
 
-For GitHub Actions, v0.7 deterministically parses GitHub Status `incidents.json`: the incident title, affected `Actions` component, `created_at`, and `resolved_at` are public source facts. Its small RFC3339 parser is validator-portable, avoiding optional runtime date-parser behavior. Other source formats use the constrained semantic evaluator and the same quote/period equivalence rules. Query variants in the live verification are representations of the same official archive, not falsely described as independent publishers.
+For GitHub Actions, v0.8 deterministically parses the complete GitHub Status `incidents.json` response before applying the text cap used only for model prompts. Incident title, affected `Actions` component, `created_at`, and `resolved_at` are public source facts; the small RFC3339 parser is validator-portable. This fixes large-archive truncation while preserving bounded untrusted prompt text. Query variants in the live verification are representations of the same official archive, not falsely described as independent publishers.
 
 ## Cross-chain binding and relayer limits
 

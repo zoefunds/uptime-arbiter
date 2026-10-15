@@ -233,7 +233,11 @@ def test_github_status_json_yields_verifiable_actions_minutes_without_llm(direct
             "created_at": datetime.datetime.fromtimestamp(start + 60, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
             "resolved_at": datetime.datetime.fromtimestamp(start + 660, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
             "components": [{"name": "Actions"}],
-        }]
+        }],
+        # Archive payloads are routinely larger than the semantic prompt cap.
+        # The deterministic extractor must parse the complete JSON rather than
+        # attempting json.loads() on a truncated document.
+        "archive_padding": "x" * 13000,
     }
     direct_vm.mock_web(r".*githubstatus\.com/api/v2/incidents.*", {"status": 200, "body": json.dumps(incident)})
     contract.evaluate_claim(claim_id)
