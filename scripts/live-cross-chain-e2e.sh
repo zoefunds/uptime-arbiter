@@ -5,9 +5,9 @@ set -euo pipefail
 # encrypted keystore paths, never raw keys, and writes a machine-readable record
 # containing only public addresses and transaction hashes.
 BASE_RPC="${BASE_RPC:-https://sepolia.base.org}"
-BASE_ESCROW="${BASE_ESCROW:-0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A}"
+BASE_ESCROW="${BASE_ESCROW:-0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d}"
 USDC="${USDC:-0x036CbD53842c5426634e7929541eC2318f3dCF7e}"
-GEN_CONTRACT="${GEN_CONTRACT:-0xF6939F08B86162aA26849572f95d6D0147E357B4}"
+GEN_CONTRACT="${GEN_CONTRACT:-0x700D935A78562Dd5FBdfA603bbb5E00C9f521D81}"
 PROVIDER_KEYSTORE="${PROVIDER_KEYSTORE:?set PROVIDER_KEYSTORE}"
 CUSTOMER_KEYSTORE="${CUSTOMER_KEYSTORE:?set CUSTOMER_KEYSTORE}"
 KEYSTORE_PASSWORD="${KEYSTORE_PASSWORD:?set KEYSTORE_PASSWORD}"
@@ -17,7 +17,7 @@ RESULT_FILE="${RESULT_FILE:-/tmp/uptime-v4-live-e2e.jsonl}"
 
 PROVIDER="$(cast wallet address --keystore "$PROVIDER_KEYSTORE" --password "$KEYSTORE_PASSWORD")"
 CUSTOMER="$(cast wallet address --keystore "$CUSTOMER_KEYSTORE" --password "$KEYSTORE_PASSWORD")"
-## v0.9's deterministic GitHub Actions evaluator intentionally accepts the
+## v0.10's deterministic GitHub Actions evaluator intentionally accepts the
 ## canonical incident archive only.  It derives payable intervals from the
 ## incident-update timeline rather than summary/status snapshots.
 SOURCES='["https://www.githubstatus.com/api/v2/incidents.json"]'
@@ -71,7 +71,7 @@ setup_scenario() {
   now="$(date +%s)"; term_start="$((now - 7200))"
   registration="$((now + registration_offset))"; service_end="$((now + service_offset))"
   claim_deadline="$((now + claim_offset))"; settlement_deadline="$((now + settlement_offset))"
-  escrow=100000; bond=20000; label="Uptime Arbiter v0.9 live E2E ${scenario}"
+  escrow=100000; bond=20000; label="Uptime Arbiter v0.10 live E2E ${scenario}"
   terms="$(terms_hash "$escrow" "$bond" "$registration" "$service_end" "$claim_deadline" "$settlement_deadline" "$label")"
   agreement="$(cast call "$BASE_ESCROW" 'nextAgreementId()(uint256)' --rpc-url "$BASE_RPC")"
 

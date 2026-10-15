@@ -8,20 +8,19 @@ Uptime Arbiter is a two-chain SLA protocol. GenLayer StudioNet adjudicates publi
 | --- | --- |
 | Web app | [uptime-arbiter.vercel.app](https://uptime-arbiter.vercel.app) |
 | API health | [uptime-arbiter-usdc-api.fly.dev/healthz](https://uptime-arbiter-usdc-api.fly.dev/healthz) |
-| GenLayer v0.9 adjudicator (current redeployment) | [`0xF6939F08B86162aA26849572f95d6D0147E357B4`](https://explorer-studio.genlayer.com/address/0xF6939F08B86162aA26849572f95d6D0147E357B4) |
-| GenLayer deployment | [`0x450c…8e04`](https://explorer-studio.genlayer.com/transactions/0x450c4736f0ea39f5c5d9dc63809c8ed9d5db5a687036a4f13f7014ef2b678e04) |
-| Base Sepolia v0.7 escrow | [`0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A`](https://sepolia.basescan.org/address/0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A) |
-| Base deployment | [`0x88c9…0520`](https://sepolia.basescan.org/tx/0x88c9a70ed2653e9912d7879ef42ef56eacd2825646c642e56416032741310520) |
+| GenLayer v0.10 adjudicator | [`0x700D935A78562Dd5FBdfA603bbb5E00C9f521D81`](https://explorer-studio.genlayer.com/address/0x700D935A78562Dd5FBdfA603bbb5E00C9f521D81) |
+| GenLayer deployment | [`0xa75f…900b`](https://explorer-studio.genlayer.com/transactions/0xa75f27d8301db569c2219b50c94d888b99eef335ff32a710c48302a98400900b) |
+| Base Sepolia v0.8 escrow | [`0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d`](https://sepolia.basescan.org/address/0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d) |
+| Base deployment | [`0x7b67…4eb2`](https://sepolia.basescan.org/tx/0x7b67ccfce0b7606d523a3ecf1e5d30350554a623bbacd188543c2f4c836b4eb2) |
 | Base Sepolia USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 
-The API health endpoint was checked after deployment and reports healthy Postgres and Redis. Contract-index tables were deliberately cleared and their cursor reset before the new adjudicator was indexed; authentication/session data was not touched.
+The API health endpoint was checked after deployment and reports healthy Postgres and Redis. The contract mirror was inspected after the address switch and contained zero SLAs, claims, and challenges with cursor `0/0`; no destructive delete was needed and authentication/session data was untouched.
 
-On 15 October 2026, the GenLayer adjudicator was redeployed from the tested
-current `contracts/UptimeArbiter.py` source after the canonical-incident
-evidence documentation was corrected. The redeployment transaction finalized
-with five agreeing validators. The Base v0.7 escrow is unchanged because no
-Solidity source or ABI changed; Vercel and Fly now point at the replacement
-GenLayer address above.
+On 15 October 2026, both contracts were redeployed from the tested v0.10/v0.8
+sources. The GenLayer deployment finalized with validator consensus. The Base
+deployment separates owner, relayer, dispute resolver, and ruling verifier into
+four distinct addresses and rejects any future role rotation that collapses
+that separation.
 
 ## Historical live settlement evidence
 
@@ -45,25 +44,25 @@ successful Base receipt, and reread escrow state before marking it executed.
 5. A provisional result has one bounded counterparty challenge. Resolution re-runs all evidence; finalization is impossible until the challenge window closes.
 6. The backend derives a Base payout from authenticated terms and a finalized ruling. It proposes a ten-minute-vetoable settlement, verifies successful receipts, and reads Base state before reporting settlement.
 
-Base separates service coverage, claim filing, and settlement recovery deadlines. A timely claim blocks ordinary expiry. A veto permanently marks that claim `Disputed`, prevents relayer reproposal, and freezes the exact ruling rather than returning deposits. After a 24-hour independent review, the configured resolver may re-authorize only that frozen ruling; this is final for that claim, so a liable party cannot veto repeatedly.
+Base separates service coverage, claim filing, and settlement recovery deadlines. A timely claim blocks ordinary expiry. A veto marks the claim `Disputed` and prevents relayer reproposal. A separately keyed verifier may reject the proposal or attest a corrected distribution derived from the finalized GenLayer ruling; the resolver can apply only that attestation. If the resolver is unavailable, anyone may apply it after the grace period. Refund after prolonged abandonment requires both parties' consent, so a liable provider cannot erase a valid award alone.
 
 ## Evidence consensus
 
 Every validator executes `_collect_evaluation()` itself; it does not merely accept a leader-shaped value. Decision-critical incidents require a quote that appears in the fetched source body. Included intervals are unioned before rounding, so overlapping parent/component records cannot double-count USDC.
 
-For GitHub Actions, v0.9 accepts only the canonical official HTTPS incident archive, parses complete structured JSON before applying the model-prompt cap, and derives downtime from authoritative incident-update transitions—not coarse incident created/resolved envelopes. Announced scheduled maintenance is excluded only when the Statuspage record proves the contractual advance-notice rule; uncertain intervals are non-payable.
+For GitHub Actions, v0.10 accepts only the canonical official HTTPS incident archive, parses complete structured JSON before applying the model-prompt cap, and derives downtime from authoritative incident-update transitions—not coarse incident created/resolved envelopes. Maintenance exclusions are recognized from their substantive meaning (maintenance + exclusion intent + explicit advance-notice rule), without requiring one magic phrase. Incomplete or ambiguous transitions are conservatively non-payable and delegated to the semantic evidence path rather than guessed.
 
 ## Cross-chain binding and relayer limits
 
 The Base `termsHash` commits chain, escrow address, participants, deposits, all deadlines, pricing, service, evidence URLs, and exclusions. GenLayer scopes its reservation by `Base agreement ID + registering provider`, so a stranger cannot globally squat a Base ID. The backend rejects unauthenticated/mismatched records and advances its cursor past them, preventing invalid registrations from blocking legitimate indexing.
 
-The relayer cannot choose arbitrary economics: Base requires the exact open claim, a nonzero ruling hash, and a distribution equal to held USDC. A party veto freezes that exact ruling; it cannot be reproposed or refunded as original deposits. After an independent review delay, a separately configured resolver can re-authorize only the already-frozen ruling. That reauthorization is final for the frozen claim, preventing an endless veto loop. This is an explicit operational trust boundary rather than a light-client proof.
+The relayer cannot decide the final economics of a disputed proposal. Base requires the exact open claim, a nonzero ruling hash, and a distribution equal to held USDC. After veto, a distinct ruling verifier must authenticate the claim digest and corrected allocation; a distinct resolver can apply only that verified record. The verifier can instead reject a fabricated proposal and reopen recovery. A permissionless delayed fallback prevents resolver unavailability from locking a verified award, while mutual-consent-only abandonment prevents unilateral escape.
 
 ## Verification
 
 ```bash
 pytest -q tests/direct/test_uptime_arbiter.py  # 14 passed
-forge test -vvv                                # 8 passed
+forge test -vvv                                # 13 passed
 cd backend && npm run build
 cd frontend && ./node_modules/.bin/tsc --noEmit && npm run lint
 ```

@@ -12,10 +12,10 @@ custodies user USDC. Base Sepolia's escrow contract is the only asset layer.
 | Fly Postgres | `uptime-arbiter-usdc-db` |
 | API | `https://uptime-arbiter-usdc-api.fly.dev` |
 | Runtime process groups | API and indexer, deployed together from the same image |
-| GenLayer v0.9 contract | `0xF6939F08B86162aA26849572f95d6D0147E357B4` |
-| Base v0.7 escrow | `0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A` |
+| GenLayer v0.10 contract | `0x700D935A78562Dd5FBdfA603bbb5E00C9f521D81` |
+| Base v0.8 escrow | `0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d` |
 
-The production `/healthz` response was rechecked after the v0.9/v0.7 deployment on 2026-10-15 and reported both database and Redis checks as healthy. Contract-index rows are cleared before an address switch; the indexer begins at offset zero for the new contract, while auth/session data remains intact.
+Production is configured for the v0.10/v0.8 pair. Contract-index rows are cleared before an address switch; the indexer begins at offset zero for the new contract, while auth/session data remains intact.
 
 The prior v0.8/v0.5 production indexer completed a challenged-breach relay on 2026-10-15. It
 recorded `FINALIZED_BREACH` with a one-challenge history, submitted

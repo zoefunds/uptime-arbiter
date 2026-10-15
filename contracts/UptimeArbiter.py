@@ -1,4 +1,4 @@
-# v0.9.0 — canonical Statuspage impairment intervals and enforceable dispute review.
+# v0.10.0 — semantic maintenance terms and authenticated dispute evidence.
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 import hashlib
@@ -126,7 +126,17 @@ def _canonical_github_incidents_url(url):
 
 def _scheduled_maintenance_excluded(item, updates, exclusion_terms):
     terms = _normalized_fact(exclusion_terms, 1200)
-    if "scheduled maintenance" not in terms:
+    # Apply the substance of the registered exception, not one magic phrase.
+    # Examples treated equivalently include "scheduled maintenance does not
+    # count" and "maintenance announced at least 24 hours before the window is
+    # excluded". The deterministic parser deliberately supports only the
+    # explicit 24-hour/one-day rule it can prove from Statuspage timestamps;
+    # more ambiguous prose falls back to the semantic evidence path.
+    excludes_maintenance = "maintenance" in terms and any(marker in terms for marker in (
+        "exclude", "excluded", "does not count", "do not count", "not count", "waived",
+    ))
+    has_advance_rule = any(marker in terms for marker in ("24 hour", "24-hour", "one day", "1 day"))
+    if not excludes_maintenance or not has_advance_rule:
         return False, ""
     name = _normalized_fact(item.get("name"), 500)
     scheduled = "maintenance" in name or any(

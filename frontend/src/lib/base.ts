@@ -5,7 +5,7 @@ export const BASE_SEPOLIA_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as
 const BASE_SEPOLIA_CHAIN_ID_HEX = "0x14a34";
 // Deployed Base Sepolia escrow. An environment value permits a future
 // redeployment without a source change.
-export const BASE_ESCROW_ADDRESS = (process.env.NEXT_PUBLIC_BASE_ESCROW_ADDRESS ?? "0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A") as Address;
+export const BASE_ESCROW_ADDRESS = (process.env.NEXT_PUBLIC_BASE_ESCROW_ADDRESS ?? "0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d") as Address;
 
 export const baseEscrowAbi = [
   { type: "function", name: "nextAgreementId", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },

@@ -43,6 +43,10 @@ export const config = {
     // Deliberately optional for normal API/indexer execution. It is consumed
     // only by the explicitly invoked dispute-resolution command.
     disputeResolverPrivateKey: process.env.BASE_DISPUTE_RESOLVER_PRIVATE_KEY ?? "",
+    // Separately keyed authority that attests the finalized GenLayer digest and
+    // economics. The escrow rejects a verifier wallet equal to owner, relayer,
+    // or resolver, and normal API/indexer code never consumes this key.
+    rulingVerifierPrivateKey: process.env.BASE_RULING_VERIFIER_PRIVATE_KEY ?? "",
   },
 
   indexer: {

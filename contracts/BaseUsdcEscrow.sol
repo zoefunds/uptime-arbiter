@@ -8,15 +8,19 @@ interface IERC20 {
 
 /// @title BaseUsdcEscrow
 /// @notice Base Sepolia is the sole custody and settlement layer for Uptime Arbiter.
+/// @custom:version 0.8.0
 /// @dev GenLayer adjudicates evidence. A relayer may only propose a distribution.
-/// Either SLA party can veto during SETTLEMENT_DELAY. A veto freezes the exact
-/// ruling for independent dispute review; it never lets either party erase a
-/// finalized payout unilaterally.
+/// Either SLA party can veto during SETTLEMENT_DELAY. A separately keyed ruling
+/// verifier must then attest the authoritative GenLayer digest and allocation;
+/// the dispute resolver may apply only that attestation. No single party,
+/// relayer, resolver, or verifier can both invent and execute a distribution.
 contract BaseUsdcEscrow {
     address public constant BASE_SEPOLIA_USDC = 0x036CbD53842c5426634e7929541eC2318f3dCF7e;
     uint8 public constant USDC_DECIMALS = 6;
     uint64 public constant SETTLEMENT_DELAY = 10 minutes;
     uint64 public constant DISPUTE_REVIEW_DELAY = 1 days;
+    uint64 public constant RESOLVER_GRACE_PERIOD = 1 days;
+    uint64 public constant DISPUTE_ABANDONMENT_DELAY = 30 days;
 
     // Append-only so existing lifecycle numeric values remain stable for
     // deployed-index compatibility. A veto is terminal for relay attempts on
@@ -50,12 +54,22 @@ contract BaseUsdcEscrow {
         bool vetoed;
     }
 
+    struct VerifiedRuling {
+        bytes32 claimId;
+        bytes32 rulingHash;
+        uint128 customerPayoutUsdc;
+        uint128 providerRefundUsdc;
+        bool exists;
+    }
+
     IERC20 public immutable usdc;
     address public owner;
     address public adjudicationRelayer;
-    /// @dev Deliberately separate from the proposal relayer. This authority can
-    /// only re-authorize the already-vetoed exact ruling, never alter economics.
+    /// @dev Deliberately distinct operational roles. The verifier authenticates
+    /// the finalized GenLayer result; the resolver can only apply that exact
+    /// attestation. Role setters enforce separate on-chain wallets.
     address public disputeResolver;
+    address public rulingVerifier;
     uint256 public nextAgreementId = 1;
     mapping(uint256 => Agreement) public agreements;
     mapping(uint256 => PendingSettlement) public pendingSettlements;
@@ -63,6 +77,9 @@ contract BaseUsdcEscrow {
     mapping(bytes32 => bool) public disputedClaims;
     mapping(bytes32 => bool) public disputeReauthorizedClaims;
     mapping(uint256 => uint64) public disputeOpenedAt;
+    mapping(uint256 => VerifiedRuling) public verifiedDisputeRulings;
+    mapping(uint256 => bool) public providerAbandonmentConsent;
+    mapping(uint256 => bool) public customerAbandonmentConsent;
 
     error Unauthorized();
     error InvalidAddress();
@@ -80,40 +97,52 @@ contract BaseUsdcEscrow {
     event SettlementVetoed(uint256 indexed agreementId, bytes32 indexed claimId, address indexed party);
     event ClaimDisputed(uint256 indexed agreementId, bytes32 indexed claimId, address indexed party);
     event DisputeRulingReauthorized(uint256 indexed agreementId, bytes32 indexed claimId, address indexed resolver, uint64 executeAfter);
+    event DisputeRulingVerified(uint256 indexed agreementId, bytes32 indexed claimId, bytes32 indexed rulingHash, uint256 customerPayoutUsdc, uint256 providerRefundUsdc);
+    event DisputedProposalRejected(uint256 indexed agreementId, bytes32 indexed claimId, address indexed verifier);
+    event DisputeAbandonmentConsent(uint256 indexed agreementId, address indexed party);
     event DisputeResolverUpdated(address indexed previousResolver, address indexed newResolver);
+    event RulingVerifierUpdated(address indexed previousVerifier, address indexed newVerifier);
     event AdjudicationExecuted(uint256 indexed agreementId, bytes32 indexed claimId, bytes32 indexed rulingHash, uint256 customerPayoutUsdc, uint256 providerRefundUsdc);
     event AgreementClosed(uint256 indexed agreementId, Status status);
     event RelayerUpdated(address indexed previousRelayer, address indexed newRelayer);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
-    constructor(address initialRelayer, address initialDisputeResolver) {
-        if (initialRelayer == address(0) || initialDisputeResolver == address(0)) revert InvalidAddress();
+    constructor(address initialRelayer, address initialDisputeResolver, address initialRulingVerifier) {
+        if (!_rolesAreDistinct(msg.sender, initialRelayer, initialDisputeResolver, initialRulingVerifier)) revert InvalidAddress();
         usdc = IERC20(BASE_SEPOLIA_USDC);
         owner = msg.sender;
         adjudicationRelayer = initialRelayer;
         disputeResolver = initialDisputeResolver;
+        rulingVerifier = initialRulingVerifier;
     }
 
     modifier onlyOwner() { if (msg.sender != owner) revert Unauthorized(); _; }
     modifier onlyRelayer() { if (msg.sender != adjudicationRelayer) revert Unauthorized(); _; }
     modifier onlyDisputeResolver() { if (msg.sender != disputeResolver) revert Unauthorized(); _; }
+    modifier onlyRulingVerifier() { if (msg.sender != rulingVerifier) revert Unauthorized(); _; }
 
     function transferOwnership(address newOwner) external onlyOwner {
-        if (newOwner == address(0)) revert InvalidAddress();
+        if (!_rolesAreDistinct(newOwner, adjudicationRelayer, disputeResolver, rulingVerifier)) revert InvalidAddress();
         emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
     }
 
     function setAdjudicationRelayer(address newRelayer) external onlyOwner {
-        if (newRelayer == address(0)) revert InvalidAddress();
+        if (!_rolesAreDistinct(owner, newRelayer, disputeResolver, rulingVerifier)) revert InvalidAddress();
         emit RelayerUpdated(adjudicationRelayer, newRelayer);
         adjudicationRelayer = newRelayer;
     }
 
     function setDisputeResolver(address newResolver) external onlyOwner {
-        if (newResolver == address(0)) revert InvalidAddress();
+        if (!_rolesAreDistinct(owner, adjudicationRelayer, newResolver, rulingVerifier)) revert InvalidAddress();
         emit DisputeResolverUpdated(disputeResolver, newResolver);
         disputeResolver = newResolver;
+    }
+
+    function setRulingVerifier(address newVerifier) external onlyOwner {
+        if (!_rolesAreDistinct(owner, adjudicationRelayer, disputeResolver, newVerifier)) revert InvalidAddress();
+        emit RulingVerifierUpdated(rulingVerifier, newVerifier);
+        rulingVerifier = newVerifier;
     }
 
     function propose(address customer, uint128 escrowUsdc, uint128 customerBondUsdc, uint64 registrationDeadline, uint64 serviceEnd, uint64 claimDeadline, uint64 settlementDeadline, bytes32 termsHash) external returns (uint256 agreementId) {
@@ -192,20 +221,74 @@ contract BaseUsdcEscrow {
         emit ClaimDisputed(agreementId, claimId, msg.sender);
     }
 
-    /// @notice Re-authorizes exactly the ruling which was vetoed after a
-    /// bounded independent review. It cannot change claimant, ruling hash, or
-    /// either payout. This is final for the frozen claim: otherwise a liable
-    /// party could veto every reauthorization forever and defeat the ruling.
-    function reauthorizeDisputedSettlement(uint256 agreementId) external onlyDisputeResolver {
+    /// @notice Authenticates the finalized GenLayer result for a disputed claim.
+    /// The verifier may correct a compromised relayer's digest or allocation,
+    /// but cannot change the claim or distribute more than the held USDC.
+    function attestDisputeRuling(
+        uint256 agreementId,
+        bytes32 claimId,
+        bytes32 rulingHash,
+        uint128 customerPayoutUsdc,
+        uint128 providerRefundUsdc
+    ) external onlyRulingVerifier {
+        Agreement storage a = agreements[agreementId];
+        PendingSettlement storage p = pendingSettlements[agreementId];
+        if (a.status != Status.Disputed || p.claimId == bytes32(0) || !p.vetoed) revert InvalidState();
+        if (claimId != a.openClaimId || claimId != p.claimId || rulingHash == bytes32(0)) revert BindingMismatch();
+        if (uint256(customerPayoutUsdc) + providerRefundUsdc != uint256(a.providerDeposited) + a.customerDeposited) revert InvalidAmount();
+        verifiedDisputeRulings[agreementId] = VerifiedRuling(claimId, rulingHash, customerPayoutUsdc, providerRefundUsdc, true);
+        emit DisputeRulingVerified(agreementId, claimId, rulingHash, customerPayoutUsdc, providerRefundUsdc);
+    }
+
+    /// @notice Rejects a relay proposal for which no valid finalized ruling
+    /// exists. The original claim remains open; a correct proposal may still be
+    /// submitted before its deadline, or normal expiry recovery may proceed.
+    function rejectDisputedProposal(uint256 agreementId) external onlyRulingVerifier {
         Agreement storage a = agreements[agreementId];
         PendingSettlement storage p = pendingSettlements[agreementId];
         if (a.status != Status.Disputed || p.claimId == bytes32(0) || !p.vetoed) revert InvalidState();
         if (block.timestamp < uint256(disputeOpenedAt[agreementId]) + DISPUTE_REVIEW_DELAY) revert DeadlineNotReached();
-        p.vetoed = false;
-        p.executeAfter = uint64(block.timestamp + SETTLEMENT_DELAY);
-        disputeReauthorizedClaims[p.claimId] = true;
-        a.status = Status.SettlementPending;
-        emit DisputeRulingReauthorized(agreementId, p.claimId, msg.sender, p.executeAfter);
+        bytes32 claimId = p.claimId;
+        disputedClaims[claimId] = false;
+        delete pendingSettlements[agreementId];
+        delete verifiedDisputeRulings[agreementId];
+        delete disputeOpenedAt[agreementId];
+        a.status = Status.Active;
+        emit DisputedProposalRejected(agreementId, claimId, msg.sender);
+    }
+
+    /// @notice The resolver applies only the separately verified ruling.
+    function resolveDisputedSettlement(uint256 agreementId) external onlyDisputeResolver {
+        _applyVerifiedRuling(agreementId);
+    }
+
+    /// @notice If the resolver is unavailable, the verifier's already-recorded
+    /// ruling becomes permissionlessly executable after a bounded grace period.
+    function executeVerifiedDispute(uint256 agreementId) external {
+        if (block.timestamp < uint256(disputeOpenedAt[agreementId]) + DISPUTE_REVIEW_DELAY + RESOLVER_GRACE_PERIOD) revert DeadlineNotReached();
+        _applyVerifiedRuling(agreementId);
+    }
+
+    /// @notice Last-resort recovery if both authorities disappear. Neither a
+    /// liable provider nor claimant can erase a ruling alone: both parties must
+    /// consent, and only after a long public abandonment period.
+    function consentToAbandonedDisputeRefund(uint256 agreementId) external {
+        Agreement storage a = agreements[agreementId];
+        if (a.status != Status.Disputed || block.timestamp < uint256(disputeOpenedAt[agreementId]) + DISPUTE_ABANDONMENT_DELAY) revert InvalidState();
+        if (msg.sender == a.provider) providerAbandonmentConsent[agreementId] = true;
+        else if (msg.sender == a.customer) customerAbandonmentConsent[agreementId] = true;
+        else revert Unauthorized();
+        emit DisputeAbandonmentConsent(agreementId, msg.sender);
+        if (providerAbandonmentConsent[agreementId] && customerAbandonmentConsent[agreementId]) {
+            bytes32 claimId = a.openClaimId;
+            a.status = Status.Expired;
+            a.claimOpen = false;
+            consumedClaims[claimId] = true;
+            delete pendingSettlements[agreementId];
+            delete verifiedDisputeRulings[agreementId];
+            _refundOriginalDeposits(a);
+            emit AgreementClosed(agreementId, Status.Expired);
+        }
     }
 
     function executeSettlement(uint256 agreementId) external {
@@ -265,6 +348,28 @@ contract BaseUsdcEscrow {
         a.customerDeposited = 0;
         if (providerAmount != 0) _push(a.provider, providerAmount);
         if (customerAmount != 0) _push(a.customer, customerAmount);
+    }
+
+    function _applyVerifiedRuling(uint256 agreementId) private {
+        Agreement storage a = agreements[agreementId];
+        PendingSettlement storage p = pendingSettlements[agreementId];
+        VerifiedRuling memory verified = verifiedDisputeRulings[agreementId];
+        if (a.status != Status.Disputed || p.claimId == bytes32(0) || !p.vetoed || !verified.exists) revert InvalidState();
+        if (block.timestamp < uint256(disputeOpenedAt[agreementId]) + DISPUTE_REVIEW_DELAY) revert DeadlineNotReached();
+        p.rulingHash = verified.rulingHash;
+        p.customerPayoutUsdc = verified.customerPayoutUsdc;
+        p.providerRefundUsdc = verified.providerRefundUsdc;
+        p.vetoed = false;
+        p.executeAfter = uint64(block.timestamp + SETTLEMENT_DELAY);
+        disputeReauthorizedClaims[p.claimId] = true;
+        a.status = Status.SettlementPending;
+        emit DisputeRulingReauthorized(agreementId, p.claimId, msg.sender, p.executeAfter);
+    }
+
+    function _rolesAreDistinct(address roleOwner, address relayer, address resolver, address verifier) private pure returns (bool) {
+        return roleOwner != address(0) && relayer != address(0) && resolver != address(0) && verifier != address(0)
+            && roleOwner != relayer && roleOwner != resolver && roleOwner != verifier
+            && relayer != resolver && relayer != verifier && resolver != verifier;
     }
 
     function _pull(address from, uint256 amount) private { if (!usdc.transferFrom(from, address(this), amount)) revert TransferFailed(); }

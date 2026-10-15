@@ -18,6 +18,7 @@ contract BaseUsdcEscrowTest {
     address private constant CUSTOMER = address(0xB0B);
     address private constant RELAYER = address(0xCAFE);
     address private constant DISPUTE_RESOLVER = address(0xD15);
+    address private constant RULING_VERIFIER = address(0xBEEF);
     bytes32 private constant TERMS = keccak256("bound SLA terms");
     BaseUsdcEscrow private escrow;
     MockUSDC private usdc;
@@ -26,7 +27,7 @@ contract BaseUsdcEscrowTest {
         MockUSDC template = new MockUSDC();
         vm.etch(USDC, address(template).code);
         usdc = MockUSDC(USDC);
-        escrow = new BaseUsdcEscrow(RELAYER, DISPUTE_RESOLVER);
+        escrow = new BaseUsdcEscrow(RELAYER, DISPUTE_RESOLVER, RULING_VERIFIER);
         usdc.mint(PROVIDER, 100_000_000);
         usdc.mint(CUSTOMER, 100_000_000);
     }
@@ -91,7 +92,7 @@ contract BaseUsdcEscrowTest {
         _eq(usdc.balanceOf(CUSTOMER), 100_000_000, "customer bounded recovery");
     }
 
-    function testVetoFreezesClaimAndResolverReauthorizesExactPayout() public {
+    function testVetoCorrectsFabricatedRelayAndEnforcesVerifiedPayout() public {
         (uint256 id,,, uint64 settlementDeadline) = _activate(10_000_000, 2_000_000);
         bytes32 claimId = keccak256("claim-veto");
         _openClaim(id, claimId);
@@ -108,14 +109,17 @@ contract BaseUsdcEscrowTest {
         vm.expectRevert(BaseUsdcEscrow.BindingMismatch.selector);
         escrow.proposeAdjudication(id, claimId, keccak256("second-ruling"), 2_000_000, 10_000_000);
         // A provider cannot convert a valid breach into a refund merely by
-        // vetoing. The pre-veto exact payout remains stored and only the
-        // separate resolver can re-authorize it after review.
+        // vetoing. The independent verifier corrects the compromised relay's
+        // digest/allocation, and the resolver can apply only that attestation.
         vm.warp(uint256(settlementDeadline) + 1);
         vm.expectRevert(BaseUsdcEscrow.InvalidState.selector);
         escrow.recoverExpired(id);
+        bytes32 authenticRuling = keccak256("verified-finalized-ruling");
+        vm.prank(RULING_VERIFIER);
+        escrow.attestDisputeRuling(id, claimId, authenticRuling, 9_000_000, 3_000_000);
         vm.warp(block.timestamp + escrow.DISPUTE_REVIEW_DELAY());
         vm.prank(DISPUTE_RESOLVER);
-        escrow.reauthorizeDisputedSettlement(id);
+        escrow.resolveDisputedSettlement(id);
         // A party received its one veto and independent review. It cannot
         // cycle the same frozen ruling back into Disputed forever.
         vm.prank(PROVIDER);
@@ -123,9 +127,92 @@ contract BaseUsdcEscrowTest {
         escrow.vetoSettlement(id);
         vm.warp(block.timestamp + escrow.SETTLEMENT_DELAY());
         escrow.executeSettlement(id);
-        _eq(usdc.balanceOf(CUSTOMER), 110_000_000, "legitimate vetoed payout remains enforceable");
-        _eq(usdc.balanceOf(PROVIDER), 90_000_000, "provider receives only original ruling remainder");
-        _eq(_status(id), uint8(BaseUsdcEscrow.Status.Settled), "resolver reauthorization settles exact frozen ruling");
+        _eq(usdc.balanceOf(CUSTOMER), 107_000_000, "verified ruling returns bond plus $7 penalty");
+        _eq(usdc.balanceOf(PROVIDER), 93_000_000, "fabricated frozen allocation is not paid");
+        _eq(_status(id), uint8(BaseUsdcEscrow.Status.Settled), "verified corrected ruling settles");
+    }
+
+    function testUnavailableResolverCannotLockVerifiedRuling() public {
+        (uint256 id,,,) = _activate(10_000_000, 2_000_000);
+        bytes32 claimId = keccak256("resolver-unavailable");
+        _openClaim(id, claimId);
+        vm.prank(RELAYER);
+        escrow.proposeAdjudication(id, claimId, keccak256("bad-relay"), 12_000_000, 0);
+        vm.prank(CUSTOMER);
+        escrow.vetoSettlement(id);
+        vm.prank(RULING_VERIFIER);
+        escrow.attestDisputeRuling(id, claimId, keccak256("verified-ruling"), 6_000_000, 6_000_000);
+        vm.warp(block.timestamp + escrow.DISPUTE_REVIEW_DELAY() + escrow.RESOLVER_GRACE_PERIOD());
+        escrow.executeVerifiedDispute(id);
+        vm.warp(block.timestamp + escrow.SETTLEMENT_DELAY());
+        escrow.executeSettlement(id);
+        _eq(usdc.balanceOf(CUSTOMER), 104_000_000, "permissionless fallback enforces verified penalty");
+        _eq(usdc.balanceOf(PROVIDER), 96_000_000, "provider receives verified remainder");
+    }
+
+    function testVerifierCanRejectFabricatedProposalAndRestoreRecovery() public {
+        (uint256 id,,, uint64 settlementDeadline) = _activate(10_000_000, 2_000_000);
+        bytes32 claimId = keccak256("fraudulent-proposal");
+        _openClaim(id, claimId);
+        vm.prank(RELAYER);
+        escrow.proposeAdjudication(id, claimId, keccak256("fabricated"), 12_000_000, 0);
+        vm.prank(CUSTOMER);
+        escrow.vetoSettlement(id);
+        vm.warp(block.timestamp + escrow.DISPUTE_REVIEW_DELAY());
+        vm.prank(RULING_VERIFIER);
+        escrow.rejectDisputedProposal(id);
+        _eq(_status(id), uint8(BaseUsdcEscrow.Status.Active), "invalid relay is rejected without consuming claim");
+        vm.warp(uint256(settlementDeadline) + 1);
+        escrow.recoverExpired(id);
+        _eq(usdc.balanceOf(PROVIDER), 100_000_000, "provider recovers after rejected false ruling");
+        _eq(usdc.balanceOf(CUSTOMER), 100_000_000, "customer recovers after rejected false ruling");
+    }
+
+    function testRoleAssignmentsMustRemainSeparate() public {
+        vm.expectRevert(BaseUsdcEscrow.InvalidAddress.selector);
+        new BaseUsdcEscrow(RELAYER, RELAYER, RULING_VERIFIER);
+        vm.expectRevert(BaseUsdcEscrow.InvalidAddress.selector);
+        new BaseUsdcEscrow(RELAYER, DISPUTE_RESOLVER, DISPUTE_RESOLVER);
+        vm.expectRevert(BaseUsdcEscrow.InvalidAddress.selector);
+        escrow.setDisputeResolver(RELAYER);
+        vm.expectRevert(BaseUsdcEscrow.InvalidAddress.selector);
+        escrow.setRulingVerifier(DISPUTE_RESOLVER);
+    }
+
+    function testFabricatedRulingCannotBeResolvedWithoutVerifier() public {
+        (uint256 id,,,) = _activate(10_000_000, 2_000_000);
+        bytes32 claimId = keccak256("no-verifier");
+        _openClaim(id, claimId);
+        vm.prank(RELAYER);
+        escrow.proposeAdjudication(id, claimId, keccak256("fabricated"), 12_000_000, 0);
+        vm.prank(PROVIDER);
+        escrow.vetoSettlement(id);
+        vm.warp(block.timestamp + escrow.DISPUTE_REVIEW_DELAY());
+        vm.prank(DISPUTE_RESOLVER);
+        vm.expectRevert(BaseUsdcEscrow.InvalidState.selector);
+        escrow.resolveDisputedSettlement(id);
+        vm.prank(RELAYER);
+        vm.expectRevert(BaseUsdcEscrow.Unauthorized.selector);
+        escrow.attestDisputeRuling(id, claimId, keccak256("forged"), 2_000_000, 10_000_000);
+    }
+
+    function testMutualAbandonmentRecoveryCannotBeTriggeredUnilaterally() public {
+        (uint256 id,,,) = _activate(10_000_000, 2_000_000);
+        bytes32 claimId = keccak256("abandoned-authorities");
+        _openClaim(id, claimId);
+        vm.prank(RELAYER);
+        escrow.proposeAdjudication(id, claimId, keccak256("disputed"), 12_000_000, 0);
+        vm.prank(PROVIDER);
+        escrow.vetoSettlement(id);
+        vm.warp(block.timestamp + escrow.DISPUTE_ABANDONMENT_DELAY());
+        vm.prank(PROVIDER);
+        escrow.consentToAbandonedDisputeRefund(id);
+        _eq(_status(id), uint8(BaseUsdcEscrow.Status.Disputed), "one party cannot erase a ruling");
+        vm.prank(CUSTOMER);
+        escrow.consentToAbandonedDisputeRefund(id);
+        _eq(_status(id), uint8(BaseUsdcEscrow.Status.Expired), "mutual consent recovers abandoned escrow");
+        _eq(usdc.balanceOf(PROVIDER), 100_000_000, "provider deposit recovered");
+        _eq(usdc.balanceOf(CUSTOMER), 100_000_000, "customer bond recovered");
     }
 
     function testProposalTooNearSettlementDeadlineIsRejected() public {

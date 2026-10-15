@@ -263,8 +263,11 @@ def test_github_status_uses_actual_update_interval_and_excludes_announced_mainte
     payload = {"incidents": [
         {"name": "Actions impairment", "created_at": ts(5), "resolved_at": ts(1000), "components": [{"name": "Actions"}], "incident_updates": [
             {"status": "investigating", "created_at": ts(100)}, {"status": "monitoring", "created_at": ts(400)}]},
-        {"name": "Scheduled maintenance for Actions", "created_at": ts(10), "scheduled_for": ts(90000), "components": [{"name": "Actions"}], "incident_updates": [
-            {"status": "scheduled", "created_at": ts(10)}, {"status": "investigating", "created_at": ts(90000)}, {"status": "resolved", "created_at": ts(90600)}]},
+        # This maintenance occurs inside the claimed observation window. It was
+        # announced more than 24 hours earlier and must be excluded even though
+        # the contract prose does not contain the exact phrase "scheduled maintenance".
+        {"name": "Actions maintenance window", "created_at": ts(-90000), "scheduled_for": ts(300), "components": [{"name": "Actions"}], "incident_updates": [
+            {"status": "scheduled", "created_at": ts(-90000)}, {"status": "investigating", "created_at": ts(300)}, {"status": "resolved", "created_at": ts(900)}]},
     ]}
     direct_vm.mock_web(r".*githubstatus\.com/api/v2/incidents.*", {"status": 200, "body": json.dumps(payload)})
     contract.evaluate_claim(claim_id)

@@ -1,4 +1,4 @@
-# Uptime Arbiter v0.9 security and enforceability milestone
+# Uptime Arbiter v0.10/v0.8 security and enforceability milestone
 
 ## Delivered architecture
 
@@ -8,25 +8,27 @@ This milestone completes the split required by the protocol: **GenLayer adjudica
 
 | Layer | Address | Deployment transaction |
 | --- | --- | --- |
-| GenLayer StudioNet v0.9 adjudicator (current redeployment) | [`0xF6939F08B86162aA26849572f95d6D0147E357B4`](https://explorer-studio.genlayer.com/address/0xF6939F08B86162aA26849572f95d6D0147E357B4) | [`0x450c4736f0ea39f5c5d9dc63809c8ed9d5db5a687036a4f13f7014ef2b678e04`](https://explorer-studio.genlayer.com/transactions/0x450c4736f0ea39f5c5d9dc63809c8ed9d5db5a687036a4f13f7014ef2b678e04) |
-| Base Sepolia v0.7 escrow | [`0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A`](https://sepolia.basescan.org/address/0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A) | [`0x88c9a70ed2653e9912d7879ef42ef56eacd2825646c642e56416032741310520`](https://sepolia.basescan.org/tx/0x88c9a70ed2653e9912d7879ef42ef56eacd2825646c642e56416032741310520) |
+| GenLayer StudioNet v0.10 adjudicator | [`0x700D935A78562Dd5FBdfA603bbb5E00C9f521D81`](https://explorer-studio.genlayer.com/address/0x700D935A78562Dd5FBdfA603bbb5E00C9f521D81) | [`0xa75f27d8301db569c2219b50c94d888b99eef335ff32a710c48302a98400900b`](https://explorer-studio.genlayer.com/transactions/0xa75f27d8301db569c2219b50c94d888b99eef335ff32a710c48302a98400900b) |
+| Base Sepolia v0.8 escrow | [`0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d`](https://sepolia.basescan.org/address/0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d) | [`0x7b67ccfce0b7606d523a3ecf1e5d30350554a623bbacd188543c2f4c836b4eb2`](https://sepolia.basescan.org/tx/0x7b67ccfce0b7606d523a3ecf1e5d30350554a623bbacd188543c2f4c836b4eb2) |
 | Base Sepolia USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) | Circle test token |
 
-The v0.9 deployment finalized with majority validator agreement. Fly (`uptime-arbiter-usdc-api`) and Vercel production use the v0.9/v0.7 pair. `/healthz` was checked after migration and reported `database: true` and `redis: true`.
+The v0.10 GenLayer deployment finalized with majority validator agreement. The v0.8 Base deployment has nonempty runtime bytecode and its on-chain owner, relayer, resolver, and verifier reads match the four distinct operational addresses documented below. Fly and Vercel were redeployed against this pair. The live `/healthz` response returned `database: true` and `redis: true`; the production contract mirror was verified as zero SLA, zero claim, zero challenge, cursor `0/0`, so no destructive database deletion was necessary.
 
-### 15 October 2026 canonical-source redeployment
+### 15 October 2026 authenticated-dispute redeployment
 
-The GenLayer adjudicator was redeployed from the currently tested source after
-the canonical GitHub incident-parser documentation was corrected. Deployment
-[`0x450c…8e04`](https://explorer-studio.genlayer.com/transactions/0x450c4736f0ea39f5c5d9dc63809c8ed9d5db5a687036a4f13f7014ef2b678e04)
-finalized with five validator `AGREE` votes at
-[`0xF693…57B4`](https://explorer-studio.genlayer.com/address/0xF6939F08B86162aA26849572f95d6D0147E357B4).
-Before the switch, the full contract suite passed: 14 Direct Mode tests and 8
-Foundry escrow tests. The backend/frontend builds also passed. Base escrow was
-not redeployed because its Solidity source and ABI did not change. Production's
-non-authoritative index mirror was inspected after the switch: it has zero SLA,
-claim, and challenge rows and its sole cursor is already `0/0`; no destructive
-database action was performed.
+The adjudicator was redeployed from the tested v0.10 source at
+[`0x700D…1D81`](https://explorer-studio.genlayer.com/address/0x700D935A78562Dd5FBdfA603bbb5E00C9f521D81).
+The escrow was redeployed from v0.8 at
+[`0x9d8A…0d6d`](https://sepolia.basescan.org/address/0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d).
+Before deployment, 14 Direct Mode tests and 13 Foundry tests passed, as did the
+backend TypeScript build and frontend typecheck/lint.
+
+The Base operational roles are deliberately distinct: owner
+`0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb`, relayer
+`0xEeE61293E25b5D4E9034DCEEB57AC89ff931B642`, resolver
+`0x187F4B4128244De438db8a732c871Ff88779D9F9`, and ruling verifier
+`0x994541A7CD9244FBD997Ba9774DbcEef226c5998`. Constructor and rotation checks
+prevent any two roles from being the same address.
 
 ## Reviewer findings closed
 
@@ -38,7 +40,10 @@ database action was performed.
 | Overlaps could inflate downtime | Intervals are unioned before minute rounding. |
 | GitHub Status timestamps were over-broad | v0.9 accepts only the canonical official archive host/path, uses update transitions for actual impairment intervals, and excludes qualifying announced maintenance deterministically. |
 | Base ID could be globally squatted | Reservation is provider-scoped. Backend authenticates the Base provider, parties, terms hash, deposits and deadlines before indexing/relaying; invalid records are skipped without stalling the cursor. |
-| A liable provider could veto then reclaim or loop vetoes | A veto freezes the exact payout. Original-deposit recovery is disabled while disputed; after a 24-hour review, a separate resolver can re-authorize only that same ruling, and the reauthorization is final for that frozen claim. |
+| A veto could lock funds or preserve a malicious relay allocation | Veto blocks the relayer. A separate verifier can reject the proposal or attest a corrected claim digest/allocation; the resolver can apply only that attestation. Anyone can apply an attested ruling after the resolver grace period. Abandonment refund requires both parties, so neither can nullify a valid award alone. |
+| Operational roles could collapse into one key | Owner, relayer, resolver, and verifier must be pairwise distinct in the constructor and every role setter. |
+| Maintenance depended on one literal phrase | Deterministic exclusion recognizes maintenance, exclusion intent, and an explicit 24-hour/one-day notice rule; the test places maintenance inside the observation window without using the phrase “scheduled maintenance.” |
+| Incomplete incident transitions could be guessed | Missing or ambiguous impairment boundaries are conservatively non-payable; noncanonical evidence remains subject to independent semantic evaluation rather than fabricated durations. |
 | Claims could be future or too fresh | GenLayer enforces completed observation windows, publication lag, service period and filing deadline. |
 | Settlement could bypass a challenge | Evaluation is provisional; one counterparty challenge is bounded and finalization waits for the challenge deadline. |
 | Expiry could erase an unresolved claim | Base preserves timely open claims through settlement deadline, then refunds original deposits through a bounded recovery path. |
@@ -47,7 +52,7 @@ database action was performed.
 
 ## Historical v0.8 positive challenged-breach trace
 
-The prior v0.8/v0.5 pair completed the funded trace below. It is retained as historical execution evidence only; its database mirror was cleared before the v0.9/v0.7 migration. No user sessions or authentication records were deleted.
+The prior v0.8/v0.5 pair completed the funded trace below. It is retained as historical execution evidence only; its database mirror was cleared during the later contract migrations. No user sessions or authentication records were deleted.
 
 A real, small USDC agreement validated the historical v0.8/v0.5 deployment rather than seeded UI data. v0.9 supersedes its coarse Statuspage timestamps with canonical-host validation, incident-update impairment intervals, and deterministic maintenance exclusions.
 
@@ -73,18 +78,18 @@ Executed locally after the v0.8 change:
 
 ```text
 pytest -q tests/direct/test_uptime_arbiter.py  -> 14 passed
-forge test -vvv                                -> 8 passed
+forge test -vvv                                -> 13 passed
 backend npm run build                          -> passed
 frontend tsc --noEmit + npm run lint           -> passed
 ```
 
-Direct Mode includes adversarial leader-minute, service, maintenance, quotation, timestamp, spoofed-Statuspage-host, actual-interval, and Base-ID-squatting cases. Foundry includes exact held-balance distributions, mandatory zero-bond acceptance, substituted-claim rejection, near-expiration safety, and a legitimate payout that remains enforceable after a provider veto.
+Direct Mode includes adversarial leader-minute, service, semantic-maintenance, quotation, timestamp, spoofed-Statuspage-host, actual-interval, ambiguous-transition, and Base-ID-squatting cases. Foundry additionally covers unauthorized role assignment, fabricated ruling rejection, corrected allocation after a compromised proposal, permissionless execution when the resolver is unavailable, verifier rejection/recovery, and mutual-consent-only abandonment.
 
 ## Operations and frontend behavior
 
 - The frontend switches to Base Sepolia before ERC-20 approvals/funding and to GenLayer for adjudication writes. Submitted → consensus → finalized progress is visible for GenLayer writes.
 - Base writes re-read the injected wallet account after switching networks and let that wallet/RPC estimate gas; no fixed client-side gas ceiling can suppress the signing prompt.
-- Resolver reauthorization is a separately keyed, receipt-checked operator command—not an API route or automatic relayer action—and can only release the on-chain frozen ruling after review.
+- Dispute resolution is a two-key, receipt-checked operator command—not an API route. It reads the finalized GenLayer claim, derives the allocation itself, has the verifier attest it, and only then asks the resolver to apply it.
 - Query surfaces poll every three seconds, refetch on focus/reconnect, and are invalidated after successful writes. Base actions additionally perform a receipt/state readback.
 - The registry contains only rows indexed from the active GenLayer address. It no longer displays static “verification scenarios” as SLAs.
 - A contract migration requires changing Fly/Vercel address configuration, redeploying both, clearing only `SlaAgreement`, `Claim`, `Challenge`, and index offsets, then resetting the cursor. It never deletes Base escrow history.
