@@ -167,7 +167,7 @@ def _github_status_incident_report(url, body, service, exclusion_terms, start, e
 
     GitHub Status exposes its incident archive as Statuspage JSON.  The fields
     below are public, quoteable source facts (incident name, affected component,
-    created_at and resolved_at), so parsing them deterministically makes the
+    and authoritative incident-update timestamps), so parsing them deterministically makes the
     numerical result reproducible by the leader and every validator.  Returning
     ``None`` deliberately falls back to the general semantic evaluator for any
     other evidence format or covered service.

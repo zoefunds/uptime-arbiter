@@ -17,7 +17,10 @@ RESULT_FILE="${RESULT_FILE:-/tmp/uptime-v4-live-e2e.jsonl}"
 
 PROVIDER="$(cast wallet address --keystore "$PROVIDER_KEYSTORE" --password "$KEYSTORE_PASSWORD")"
 CUSTOMER="$(cast wallet address --keystore "$CUSTOMER_KEYSTORE" --password "$KEYSTORE_PASSWORD")"
-SOURCES='["https://www.githubstatus.com/api/v2/summary.json","https://www.githubstatus.com/api/v2/status.json","https://www.githubstatus.com/api/v2/components.json"]'
+## v0.9's deterministic GitHub Actions evaluator intentionally accepts the
+## canonical incident archive only.  It derives payable intervals from the
+## incident-update timeline rather than summary/status snapshots.
+SOURCES='["https://www.githubstatus.com/api/v2/incidents.json"]'
 EXCLUSIONS="Scheduled maintenance is excluded only when GitHub Status identifies it as scheduled and shows it was announced before the observation window."
 
 base_send() {
