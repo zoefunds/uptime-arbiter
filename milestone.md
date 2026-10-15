@@ -77,4 +77,4 @@ Direct Mode includes adversarial leader-minute, service, maintenance, quotation,
 
 The immutable Uptime comparison starts from the requested Uptime baseline, not Obolus:
 
-[`9c45aaf364e0e942b7e3beb2fc16afe8dc836cd2...93723cb7706c3258a78280914cf0a55dba9691fa`](https://github.com/zoefunds/uptime-arbiter/compare/9c45aaf364e0e942b7e3beb2fc16afe8dc836cd2...93723cb7706c3258a78280914cf0a55dba9691fa)
+[`9c45aaf364e0e942b7e3beb2fc16afe8dc836cd2...main`](https://github.com/zoefunds/uptime-arbiter/compare/9c45aaf364e0e942b7e3beb2fc16afe8dc836cd2...main)
