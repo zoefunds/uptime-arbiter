@@ -233,6 +233,10 @@ def test_github_status_json_yields_verifiable_actions_minutes_without_llm(direct
             "created_at": datetime.datetime.fromtimestamp(start + 60, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
             "resolved_at": datetime.datetime.fromtimestamp(start + 660, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
             "components": [{"name": "Actions"}],
+            "incident_updates": [
+                {"status": "investigating", "created_at": datetime.datetime.fromtimestamp(start + 60, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z")},
+                {"status": "resolved", "created_at": datetime.datetime.fromtimestamp(start + 660, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z")},
+            ],
         }],
         # Archive payloads are routinely larger than the semantic prompt cap.
         # The deterministic extractor must parse the complete JSON rather than
@@ -244,3 +248,39 @@ def test_github_status_json_yields_verifiable_actions_minutes_without_llm(direct
     evaluated = contract.get_claim(claim_id)
     assert evaluated["breach_minutes"] == 10
     assert "Incident with Actions" in evaluated["evidence_report_json"]
+
+
+def test_github_status_uses_actual_update_interval_and_excludes_announced_maintenance(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    sources = [
+        "https://www.githubstatus.com/api/v2/incidents.json",
+        "https://www.githubstatus.com/api/v2/incidents.json?view=archive",
+        "https://www.githubstatus.com/api/v2/incidents.json?view=timeline",
+    ]
+    _, claim_id = _activate_and_claim(contract, direct_vm, direct_alice, direct_bob, sources=sources, service="GitHub Actions hosted runners")
+    start = int(contract.get_claim(claim_id)["window_start_ts"])
+    ts = lambda seconds: datetime.datetime.fromtimestamp(start + seconds, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    payload = {"incidents": [
+        {"name": "Actions impairment", "created_at": ts(5), "resolved_at": ts(1000), "components": [{"name": "Actions"}], "incident_updates": [
+            {"status": "investigating", "created_at": ts(100)}, {"status": "monitoring", "created_at": ts(400)}]},
+        {"name": "Scheduled maintenance for Actions", "created_at": ts(10), "scheduled_for": ts(90000), "components": [{"name": "Actions"}], "incident_updates": [
+            {"status": "scheduled", "created_at": ts(10)}, {"status": "investigating", "created_at": ts(90000)}, {"status": "resolved", "created_at": ts(90600)}]},
+    ]}
+    direct_vm.mock_web(r".*githubstatus\.com/api/v2/incidents.*", {"status": 200, "body": json.dumps(payload)})
+    contract.evaluate_claim(claim_id)
+    # Count the authoritative impairment update interval (300 seconds = 5m),
+    # never the broad created/resolved envelope or excluded maintenance.
+    assert contract.get_claim(claim_id)["breach_minutes"] == 5
+
+
+def test_spoofed_github_status_url_never_activates_deterministic_parser(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    sources = [
+        "https://githubstatus.com.evil.example/api/v2/incidents.json",
+        "https://githubstatus.com.evil.example/api/v2/incidents.json?copy=2",
+        "https://githubstatus.com.evil.example/api/v2/incidents.json?copy=3",
+    ]
+    _, claim_id = _activate_and_claim(contract, direct_vm, direct_alice, direct_bob, sources=sources, service="GitHub Actions hosted runners")
+    direct_vm.mock_web(r".*evil\.example.*", {"status": 200, "body": json.dumps({"incidents": []})})
+    contract.evaluate_claim(claim_id)
+    assert contract.get_claim(claim_id)["status"] == "PROVISIONAL_INCONCLUSIVE"

@@ -113,7 +113,56 @@ def _rfc3339_epoch(value):
     return days * 86400 + hour * 3600 + minute * 60 + second
 
 
-def _github_status_incident_report(url, body, service, start, end, fingerprint):
+def _canonical_github_incidents_url(url):
+    """Accept only the official HTTPS GitHub Status incident archive.
+
+    Substring matching accepts attacker-controlled lookalike hosts. Query
+    parameters are permitted because Statuspage serves equivalent archive views,
+    but scheme, hostname, and path are exact.
+    """
+    base = bounded_text(url, 600).split("?", 1)[0].split("#", 1)[0].lower()
+    return base == "https://www.githubstatus.com/api/v2/incidents.json"
+
+
+def _scheduled_maintenance_excluded(item, updates, exclusion_terms):
+    terms = _normalized_fact(exclusion_terms, 1200)
+    if "scheduled maintenance" not in terms:
+        return False, ""
+    name = _normalized_fact(item.get("name"), 500)
+    scheduled = "maintenance" in name or any(
+        _normalized_fact(update.get("status"), 64) == "scheduled"
+        for update in updates if isinstance(update, dict)
+    )
+    announced = _rfc3339_epoch(item.get("created_at"))
+    scheduled_for = _rfc3339_epoch(item.get("scheduled_for")) if item.get("scheduled_for") else 0
+    if scheduled and scheduled_for and scheduled_for - announced >= 86400:
+        return True, "Scheduled maintenance announced at least 24 hours in advance"
+    return False, ""
+
+
+def _github_actual_impairment_interval(item, updates):
+    """Use Statuspage update transitions, not coarse incident envelopes.
+
+    Count only a completed impairment interval: investigating/identified begins
+    it; monitoring/resolved ends it. Missing an authoritative boundary is
+    deliberately non-payable rather than guessed from created/resolved fields.
+    """
+    ordered = []
+    for update in updates:
+        if not isinstance(update, dict) or not update.get("created_at"):
+            continue
+        ordered.append((_rfc3339_epoch(update.get("created_at")), _normalized_fact(update.get("status"), 64)))
+    ordered.sort()
+    began = 0
+    for timestamp, status in ordered:
+        if not began and status in ("investigating", "identified"):
+            began = timestamp
+        elif began and status in ("monitoring", "resolved"):
+            return began, timestamp
+    return 0, 0
+
+
+def _github_status_incident_report(url, body, service, exclusion_terms, start, end, fingerprint):
     """Extract dated GitHub Actions incidents without asking a model to parse JSON.
 
     GitHub Status exposes its incident archive as Statuspage JSON.  The fields
@@ -123,7 +172,7 @@ def _github_status_incident_report(url, body, service, start, end, fingerprint):
     ``None`` deliberately falls back to the general semantic evaluator for any
     other evidence format or covered service.
     """
-    if "githubstatus.com/api/v2/incidents" not in url.lower() or "github actions" not in service.lower():
+    if not _canonical_github_incidents_url(url) or "github actions" not in service.lower():
         return None
     try:
         payload = json.loads(body)
@@ -142,14 +191,15 @@ def _github_status_incident_report(url, body, service, start, end, fingerprint):
             name = bounded_text(item.get("name"), 500)
             if "actions" not in component_names and "actions" not in name.lower():
                 continue
-            created = bounded_text(item.get("created_at"), 64)
-            resolved = bounded_text(item.get("resolved_at"), 64)
-            if not created or not resolved:
+            updates = item.get("incident_updates") or []
+            if not isinstance(updates, list):
                 continue
-            incident_start = _rfc3339_epoch(created)
-            incident_end = _rfc3339_epoch(resolved)
+            incident_start, incident_end = _github_actual_impairment_interval(item, updates)
+            if not incident_start or not incident_end:
+                continue
             if incident_end <= incident_start or incident_end <= start or incident_start >= end:
                 continue
+            excluded, exclusion_reason = _scheduled_maintenance_excluded(item, updates, exclusion_terms)
             # The incident title is a verbatim JSON value and is retained as
             # attributable evidence alongside the fingerprint of the fetched body.
             incidents.append({
@@ -158,8 +208,8 @@ def _github_status_incident_report(url, body, service, start, end, fingerprint):
                 "service": "GitHub Actions",
                 "summary": name,
                 "quotation": name,
-                "excluded": False,
-                "exclusion_reason": "",
+                "excluded": excluded,
+                "exclusion_reason": exclusion_reason,
             })
         minutes = _union_overlap_minutes(incidents, start, end)
         return {
@@ -502,7 +552,7 @@ class UptimeArbiter(gl.Contract):
             # provided to the semantic fallback.
             body = full_body[:MAX_BODY_BYTES]
             fingerprint = hashlib.sha256(full_body.encode("utf-8", errors="ignore")).hexdigest()
-            deterministic = _github_status_incident_report(url, full_body, service, start, end, fingerprint)
+            deterministic = _github_status_incident_report(url, full_body, service, exclusions, start, end, fingerprint)
             if deterministic is not None:
                 return deterministic
             prompt = f"""Return JSON only. You are independently auditing one public status source for an SLA.

@@ -16,7 +16,7 @@ export function useBaseUsdcWrite() {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [progress, setProgress] = useState<BaseTransactionProgress>({ stage: "idle", message: "", txHash: null });
-  const send = useCallback(async (method: "propose" | "fundProvider" | "acceptAndFundCustomer" | "openClaim" | "vetoSettlement" | "executeSettlement" | "recoverExpired" | "cancelOrReclaim", args: readonly unknown[]) => {
+  const send = useCallback(async (method: "propose" | "fundProvider" | "acceptAndFundCustomer" | "openClaim" | "vetoSettlement" | "reauthorizeDisputedSettlement" | "executeSettlement" | "recoverExpired" | "cancelOrReclaim", args: readonly unknown[]) => {
     if (!address || !connector) throw new Error("Connect a Base Sepolia wallet first");
     setPending(true); setError(null); setTxHash(null);
     try {
@@ -28,6 +28,7 @@ export function useBaseUsdcWrite() {
         : method === "acceptAndFundCustomer" ? "customer acceptance and bond deposit"
         : method === "openClaim" ? "Base claim lock"
         : method === "vetoSettlement" ? "settlement veto"
+        : method === "reauthorizeDisputedSettlement" ? "independent dispute reauthorization"
         : method === "executeSettlement" ? "settlement execution"
         : method === "recoverExpired" ? "expired agreement recovery"
         : "agreement cancellation";

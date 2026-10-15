@@ -17,6 +17,7 @@ contract BaseUsdcEscrowTest {
     address private constant PROVIDER = address(0xA11CE);
     address private constant CUSTOMER = address(0xB0B);
     address private constant RELAYER = address(0xCAFE);
+    address private constant DISPUTE_RESOLVER = address(0xD15);
     bytes32 private constant TERMS = keccak256("bound SLA terms");
     BaseUsdcEscrow private escrow;
     MockUSDC private usdc;
@@ -25,7 +26,7 @@ contract BaseUsdcEscrowTest {
         MockUSDC template = new MockUSDC();
         vm.etch(USDC, address(template).code);
         usdc = MockUSDC(USDC);
-        escrow = new BaseUsdcEscrow(RELAYER);
+        escrow = new BaseUsdcEscrow(RELAYER, DISPUTE_RESOLVER);
         usdc.mint(PROVIDER, 100_000_000);
         usdc.mint(CUSTOMER, 100_000_000);
     }
@@ -90,7 +91,7 @@ contract BaseUsdcEscrowTest {
         _eq(usdc.balanceOf(CUSTOMER), 100_000_000, "customer bounded recovery");
     }
 
-    function testVetoDurablyDisputesClaimAndBlocksRepeatedRelay() public {
+    function testVetoFreezesClaimAndResolverReauthorizesExactPayout() public {
         (uint256 id,, uint64 claimDeadline, uint64 settlementDeadline) = _activate(10_000_000, 2_000_000);
         bytes32 claimId = keccak256("claim-veto");
         _openClaim(id, claimId);
@@ -106,12 +107,30 @@ contract BaseUsdcEscrowTest {
         vm.prank(RELAYER);
         vm.expectRevert(BaseUsdcEscrow.BindingMismatch.selector);
         escrow.proposeAdjudication(id, claimId, keccak256("second-ruling"), 2_000_000, 10_000_000);
-        vm.warp(uint256(claimDeadline) + 1);
-        vm.expectRevert(BaseUsdcEscrow.DeadlineNotReached.selector);
-        escrow.recoverExpired(id);
+        // A provider cannot convert a valid breach into a refund merely by
+        // vetoing. The pre-veto exact payout remains stored and only the
+        // separate resolver can re-authorize it after review.
         vm.warp(uint256(settlementDeadline) + 1);
+        vm.expectRevert(BaseUsdcEscrow.InvalidState.selector);
         escrow.recoverExpired(id);
-        _eq(_status(id), uint8(BaseUsdcEscrow.Status.Expired), "disputed claim uses bounded recovery");
+        vm.warp(block.timestamp + escrow.DISPUTE_REVIEW_DELAY());
+        vm.prank(DISPUTE_RESOLVER);
+        escrow.reauthorizeDisputedSettlement(id);
+        vm.warp(block.timestamp + escrow.SETTLEMENT_DELAY());
+        escrow.executeSettlement(id);
+        _eq(usdc.balanceOf(CUSTOMER), 110_000_000, "legitimate vetoed payout remains enforceable");
+        _eq(usdc.balanceOf(PROVIDER), 90_000_000, "provider receives only original ruling remainder");
+        _eq(_status(id), uint8(BaseUsdcEscrow.Status.Settled), "resolver reauthorization settles exact frozen ruling");
+    }
+
+    function testProposalTooNearSettlementDeadlineIsRejected() public {
+        (uint256 id,,, uint64 settlementDeadline) = _activate(10_000_000, 2_000_000);
+        bytes32 claimId = keccak256("near-deadline");
+        _openClaim(id, claimId);
+        vm.warp(uint256(settlementDeadline) - escrow.SETTLEMENT_DELAY() + 1);
+        vm.prank(RELAYER);
+        vm.expectRevert(BaseUsdcEscrow.InvalidState.selector);
+        escrow.proposeAdjudication(id, claimId, keccak256("late-ruling"), 2_000_000, 10_000_000);
     }
 
     function testRelayerCannotSettleDifferentClaim() public {

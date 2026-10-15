@@ -45,7 +45,7 @@ export const STATUS_LABELS: Record<string, string> = {
   ACTIVE: "Active",
   CONCLUDED: "Concluded",
   CANCELLED: "Cancelled",
-  DISPUTED: "Disputed — recovery pending",
+  DISPUTED: "Disputed — independent review required",
   PINNED: "Evaluating",
   PROVISIONAL_BREACH: "Provisional Breach",
   PROVISIONAL_PARTIAL: "Provisional Partial Breach",
