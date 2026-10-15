@@ -14,6 +14,11 @@ Sepolia escrow actions and the distinct GenLayer StudioNet adjudication action.
 | Base USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | API | `https://uptime-arbiter-usdc-api.fly.dev` |
 
+The production configuration and API-backed registry were rechecked on
+2026-10-15 at 07:27 UTC. The registry contains only `SLA-1`, `SLA-2`, and
+`SLA-3` from the final GenLayer contract. All three are concluded: SLA-1 by
+executed Base settlement and SLA-2/SLA-3 by bounded Base recovery.
+
 `NEXT_PUBLIC_CONTRACT_ADDRESS` is set in Vercel production. The frontend also
 contains the verified final-contract address as a fallback so an absent public
 environment variable cannot silently revive an old contract. The site footer
@@ -57,6 +62,13 @@ The production statistic values are backend aggregates of the GenLayer mirror
 and Base funding reads. They are not seeded test results and should be treated
 as a live operational view, with Base Sepolia remaining the monetary source of
 truth.
+
+Lifecycle labels are derived from authoritative Base state rather than old
+GenLayer funding acknowledgments. Settled, expired, and cancelled agreements
+must never appear active merely because their original deposit fields remain in
+the immutable Base agreement struct. The three-second cadence is a freshness
+mechanism; transaction completion still requires finalized GenLayer execution
+or a successful Base receipt plus contract read-back.
 
 Every GenLayer write exposes submitted, consensus, and finalized progress and
 is considered complete only at `FINALIZED` with a successful execution result.

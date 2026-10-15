@@ -4,6 +4,8 @@ Uptime Arbiter is a two-chain SLA protocol: GenLayer independently adjudicates p
 
 ## Live deployment
 
+Production state was re-verified on **2026-10-15 at 07:27 UTC**. The API health check reported both Postgres and Redis healthy, the public registry returned exactly `SLA-1` through `SLA-3`, and Base Sepolia agreement reads matched the lifecycle states documented below.
+
 | Component | Production value |
 | --- | --- |
 | Web application | [uptime-arbiter.vercel.app](https://uptime-arbiter.vercel.app) |
@@ -49,6 +51,8 @@ Interrupted frontend sequences are resumable. An already-created GenLayer claim 
 Postgres is only a denormalized index. The indexer reconciles every SLA against Base and uses Base’s lifecycle as authoritative: proposed, active, settlement-pending, settled/expired, or cancelled. GenLayer transaction helpers wait for `FINALIZED` and inspect execution results; Base helpers require a successful receipt and then read authoritative contract state. Registry, SLA, claims, Base agreement, vault, and statistics queries poll every three seconds, refetch on focus/reconnect, and are invalidated immediately after writes.
 
 The production database was cleared during the contract migration without deleting authentication/session data. The visible registry now contains only records from the addresses above. Executed verification scenarios appear as ordinary SLA Registry records rather than synthetic cards or a separate verification page.
+
+The current public registry has three concluded records. `SLA-1` / Base agreement 5 completed the full claim, independent evidence evaluation, challenge-window finalization, delayed settlement, and USDC distribution path. `SLA-2` / agreement 6 and `SLA-3` / agreement 7 completed the bounded expiry-recovery path and hold zero deposits. Base agreements 3 and 4 are cancelled. Agreements 1 and 2 are earlier funded, unclaimed interrupted runs that are intentionally excluded from the GenLayer registry; they become recoverable after their claim deadlines at 2026-10-15 07:44:18 UTC and 07:45:27 UTC respectively.
 
 ## Verification suites
 

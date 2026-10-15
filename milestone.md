@@ -6,6 +6,8 @@ This milestone responds directly to the GenLayer review. It replaces the earlier
 
 Production is deployed at [uptime-arbiter.vercel.app](https://uptime-arbiter.vercel.app); the backend health endpoint is [uptime-arbiter-usdc-api.fly.dev/healthz](https://uptime-arbiter-usdc-api.fly.dev/healthz).
 
+This record was last reconciled against the live API and Base Sepolia on **2026-10-15 at 07:27 UTC**. At that time Postgres and Redis were healthy, the registry contained only the three final-contract SLAs below, and all seven Base agreement states matched the on-chain snapshot in the production section.
+
 ## Final contracts
 
 | Layer | Address | Deployment transaction |
@@ -108,8 +110,23 @@ Backend TypeScript build and frontend TypeScript validation pass. Production Ver
 - The indexer rejects cross-chain binding mismatches and reads Base lifecycle/deposits authoritatively.
 - Every live view polls every three seconds and refetches after focus, reconnect, and writes.
 - The UI shows structured evidence, challenge/finalization state, Base settlement stages, explorer links, and an interrupted-claim recovery action.
-- Unfunded interrupted agreements 3 and 4 were explicitly cancelled on Base; agreements 1 and 2 are retained on-chain until their contractual recovery deadline and are not represented as final GenLayer SLAs.
+
+### Complete Base agreement inventory
+
+The final Base contract has seven agreement IDs. This table distinguishes production demonstration records from interrupted setup attempts instead of silently presenting the latter as SLAs.
+
+| Base ID | Current on-chain state | Deposits held | Registry relationship |
+| --- | --- | --- | --- |
+| 1 | `Active`, no open claim | 0.100000 provider + 0.020000 customer USDC | Interrupted pre-registration run; not a GenLayer SLA. Recovery becomes available after the 2026-10-15 07:44:18 UTC claim deadline. |
+| 2 | `Active`, no open claim | 0.100000 provider + 0.020000 customer USDC | Interrupted pre-registration run; not a GenLayer SLA. Recovery becomes available after the 2026-10-15 07:45:27 UTC claim deadline. |
+| 3 | `Cancelled` | 0 | Unfunded interrupted proposal; explicitly cancelled. |
+| 4 | `Cancelled` | 0 | Unfunded interrupted proposal; explicitly cancelled. |
+| 5 | `Settled` | 0 distributable balance; original deposit fields remain immutable audit data | `SLA-1`, finalized no-breach adjudication and executed distribution. |
+| 6 | `Expired` | 0 | `SLA-2`, both deposits recovered through bounded expiry. |
+| 7 | `Expired` | 0 | `SLA-3`, both deposits recovered through bounded expiry. |
+
+Agreement 5 has no open claim and `consumedClaims(keccak256("CLM-1"))` is true. Its execution transaction distributed 0.020000 USDC to the customer and 0.100000 USDC to the provider. Agreements 6 and 7 each returned the same original deposits through `recoverExpired()`. No synthetic database row or frontend-only scenario is counted in this inventory.
 
 ## Source comparison
 
-[Compare the previous accepted milestone (`79f8511`) with the current production branch](https://github.com/zoefunds/uptime-arbiter/compare/79f8511...main). This link uses commits from `zoefunds/uptime-arbiter` itself and remains valid after the final push.
+[Compare the previous accepted milestone (`79f8511`) with the current production branch](https://github.com/zoefunds/uptime-arbiter/compare/79f8511...main). Both references belong to `zoefunds/uptime-arbiter`; using `main` keeps the comparison current after documentation-only follow-up commits.
