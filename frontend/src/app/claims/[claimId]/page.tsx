@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -8,7 +8,20 @@ import { formatUsdc, formatTs, timeRemaining, shortAddress, STATUS_LABELS } from
 import { Card, StatusChip, Button, LoadingState, ErrorState } from "@/components/ui";
 import { useGenlayerWrite } from "@/hooks/use-genlayer-write";
 
-const RESOLVED = ["RESOLVED_BREACH", "RESOLVED_PARTIAL", "RESOLVED_NO_BREACH"];
+const PROVISIONAL = ["PROVISIONAL_BREACH", "PROVISIONAL_PARTIAL", "PROVISIONAL_NO_BREACH", "PROVISIONAL_INCONCLUSIVE"];
+const GEN_FINALIZED = ["FINALIZED_BREACH", "FINALIZED_PARTIAL", "FINALIZED_NO_BREACH", "FINALIZED_INCONCLUSIVE"];
+
+type Incident = { start_ts?: number; end_ts?: number; service?: string; summary?: string; quotation?: string; excluded?: boolean; exclusion_reason?: string };
+type SourceReport = { source_url?: string; source_fingerprint_sha256?: string; usable?: boolean; source_relevant?: boolean; covered_service_match?: boolean; source_summary?: string; breach_minutes?: number; incidents?: Incident[] };
+type EvidenceReport = { breach_minutes?: number; reports?: SourceReport[] };
+
+function parseEvidence(value?: string): EvidenceReport | null {
+  try {
+    return value ? JSON.parse(value) as EvidenceReport : null;
+  } catch {
+    return null;
+  }
+}
 
 export default function ClaimDetailPage({ params }: { params: Promise<{ claimId: string }> }) {
   const { claimId } = use(params);
@@ -16,10 +29,17 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
   const queryClient = useQueryClient();
   const { send, pending, error: writeError, warning: writeWarning, txId } = useGenlayerWrite();
 
-  const [slaId, setSlaId] = useState<string | null>(null);
   const [challengeUrl1, setChallengeUrl1] = useState("");
   const [challengeUrl2, setChallengeUrl2] = useState("");
   const [rationale, setRationale] = useState("");
+  const [now, setNow] = useState(0);
+
+  useEffect(() => {
+    const update = () => setNow(Math.floor(Date.now() / 1000));
+    update();
+    const timer = window.setInterval(update, 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["claim", claimId],
@@ -34,15 +54,17 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
     refetchInterval: 3_000,
   });
 
+  const evidence = parseEvidence(data?.claim.evidenceReportJson);
+
   if (isLoading) return <div className="px-4 py-16 lg:px-6"><LoadingState /></div>;
   if (isError || !data) return <div className="px-4 py-16 lg:px-6"><ErrorState message="Claim not found" /></div>;
 
   const { claim, challenge } = data;
   const sla = slaQuery.data?.sla;
-  const now = Math.floor(Date.now() / 1000);
   const isParty = sla && address && (address.toLowerCase() === sla.provider.toLowerCase() || address.toLowerCase() === sla.customer.toLowerCase());
 
   async function refresh() {
+    await api.refreshClaim(claimId).catch(() => undefined);
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["claim", claimId] }),
       queryClient.invalidateQueries({ queryKey: ["claims"] }),
@@ -54,7 +76,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
 
   async function handleEvaluate() {
     const ok = await send("evaluate_claim", [claimId]);
-    if (ok) refresh();
+    if (ok) await refresh();
   }
 
   async function handleFileChallenge() {
@@ -64,23 +86,18 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
       alert("At least one additional source and a rationale are required.");
       return;
     }
-    const ok = await send(
-      "file_challenge",
-      [claimId, sources, rationale.trim()],
-      BigInt(sla.challengeBondWei),
-    );
-    if (ok) refresh();
+    const ok = await send("file_challenge", [claimId, sources, rationale.trim()]);
+    if (ok) await refresh();
   }
 
   async function handleResolveChallenge() {
-    if (!challenge) return;
-    const ok = await send("resolve_challenge", [challenge.challengeId]);
-    if (ok) refresh();
+    const ok = await send("resolve_challenge", [claimId]);
+    if (ok) await refresh();
   }
 
   async function handleFinalize() {
     const ok = await send("finalize_claim", [claimId]);
-    if (ok) refresh();
+    if (ok) await refresh();
   }
 
   return (
@@ -105,7 +122,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
       {writeWarning && <div className="rounded bg-tertiary/10 px-4 py-3 font-mono text-xs text-tertiary">{writeWarning}</div>}
       {txId && !writeWarning && (
         <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">
-          Transaction accepted: {txId}
+          Transaction finalized: {txId}
         </div>
       )}
 
@@ -152,7 +169,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
             </Card>
           )}
 
-          {RESOLVED.includes(claim.status) && (
+          {(PROVISIONAL.includes(claim.status) || GEN_FINALIZED.includes(claim.status) || claim.status === "CHALLENGED") && (
             <Card>
               <h2 className="mb-4 font-display text-lg font-semibold text-on-surface">
                 Consensus Verdict
@@ -161,19 +178,48 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
                 <Field label="Verdict" value={STATUS_LABELS[claim.status] ?? claim.status} />
                 <Field label="Agreed Breach" value={`${claim.breachMinutes} min`} />
                 <Field label="Indicative USDC Payout" value={`${formatUsdc(claim.payoutWei)} USDC`} />
-                <Field label="Resolved At" value={claim.resolvedAt || "—"} />
+                <Field label="Evidence Digest" value={claim.evidenceDigest || "—"} />
               </div>
             </Card>
           )}
 
-          {claim.status === "INCONCLUSIVE" && (
+          {claim.status.includes("INCONCLUSIVE") && (
             <Card>
               <h2 className="mb-2 font-display text-lg font-semibold text-error">Inconclusive</h2>
               <p className="text-sm text-on-surface-variant">{claim.inconclusiveReason}</p>
               <p className="mt-2 text-xs text-on-surface-variant">
-                The SLA remains active — the customer may submit a new claim for a different or
-                corrected window.
+                No payout can be relayed for an inconclusive ruling. The agreement remains protected
+                until its bounded settlement deadline.
               </p>
+            </Card>
+          )}
+
+          {evidence?.reports && evidence.reports.length > 0 && (
+            <Card>
+              <h2 className="mb-4 font-display text-lg font-semibold text-on-surface">Validator Evidence Record</h2>
+              <div className="flex flex-col gap-4">
+                {evidence.reports.map((report, index) => (
+                  <div key={`${report.source_url}-${index}`} className="rounded bg-surface-container p-4">
+                    <div className="grid gap-3 font-mono text-xs md:grid-cols-3">
+                      <Field label={`Source ${index + 1}`} value={report.source_url || "—"} />
+                      <Field label="SHA-256 Fingerprint" value={report.source_fingerprint_sha256 || "—"} />
+                      <Field label="Computed Downtime" value={`${report.breach_minutes ?? 0} min`} />
+                      <Field label="Source Usable" value={report.usable ? "yes" : "no"} />
+                      <Field label="Relevant to Window" value={report.source_relevant ? "yes" : "no"} />
+                      <Field label="Covered Service Match" value={report.covered_service_match ? "yes" : "no"} />
+                    </div>
+                    {report.source_summary && <p className="mt-3 text-sm text-on-surface-variant">{report.source_summary}</p>}
+                    {(report.incidents ?? []).map((incident, incidentIndex) => (
+                      <div key={incidentIndex} className="mt-3 border-l-2 border-outline-variant pl-3 text-xs text-on-surface-variant">
+                        <p className="font-mono text-on-surface">{formatTs(incident.start_ts ?? 0)} → {formatTs(incident.end_ts ?? 0)} · {incident.service || "unidentified service"}</p>
+                        <p>{incident.summary || "No incident summary supplied."}</p>
+                        {incident.quotation && <p className="mt-1 italic">Evidence excerpt: “{incident.quotation}”</p>}
+                        <p className="mt-1 font-mono">{incident.excluded ? `Excluded: ${incident.exclusion_reason || "matched the SLA exclusions"}` : "Included in breach calculation"}</p>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
             </Card>
           )}
 
@@ -184,7 +230,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
               </h2>
               <div className="grid grid-cols-2 gap-4 font-mono text-sm md:grid-cols-4">
                 <Field label="Challenger" value={shortAddress(challenge.challenger)} />
-                <Field label="Bond" value={`${formatUsdc(challenge.bondWei)} USDC`} />
+                <Field label="Additional Sources" value={String(challenge.additionalSources.length)} />
                 <Field label="Outcome" value={challenge.outcome} />
                 <Field
                   label="Re-adjudicated Breach"
@@ -204,7 +250,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
         </div>
 
         <div className="flex flex-col gap-6 xl:col-span-4">
-          {RESOLVED.includes(claim.status) && !claim.finalized && (
+          {PROVISIONAL.includes(claim.status) && (
             <Card>
               <h2 className="mb-2 font-display text-lg font-semibold text-on-surface">
                 Challenge Window
@@ -213,7 +259,7 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
                 {timeRemaining(Number(claim.challengeDeadlineTs))}
               </p>
 
-              {!claim.isChallenged && isParty && now < Number(claim.challengeDeadlineTs) && claim.challengeCount < 2 && (
+              {!claim.isChallenged && isParty && now < Number(claim.challengeDeadlineTs) && claim.challengeCount < 1 && (
                 <div className="flex flex-col gap-3 border-t border-outline-variant pt-4">
                   <p className="text-xs text-on-surface-variant">
                     File an additive-only challenge with new evidence sources (never replacing the
@@ -239,24 +285,42 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
                     className="rounded bg-surface-container-lowest px-3 py-2 text-xs text-on-surface"
                   />
                   <Button variant="secondary" disabled={pending} onClick={handleFileChallenge}>
-                    {pending ? "Staking bond…" : "Stake Bond & File Challenge"}
+                    {pending ? "Submitting challenge…" : "File Evidence Challenge"}
                   </Button>
                 </div>
               )}
 
               {!claim.isChallenged && now >= Number(claim.challengeDeadlineTs) && (
                 <Button disabled={pending} onClick={handleFinalize}>
-                  {pending ? "Finalizing…" : "Finalize & Release Funds"}
+                  {pending ? "Finalizing…" : "Finalize GenLayer Ruling"}
                 </Button>
               )}
+            </Card>
+          )}
+
+          {claim.status === "CHALLENGED" && (
+            <Card>
+              <h2 className="mb-2 font-display text-lg font-semibold text-on-surface">Challenge Pending</h2>
+              <p className="mb-4 text-sm text-on-surface-variant">The additive evidence set must be independently re-evaluated before the claim can return to a bounded finalization window.</p>
+              <Button disabled={pending} onClick={handleResolveChallenge}>{pending ? "Re-adjudicating…" : "Trigger Re-Adjudication"}</Button>
+            </Card>
+          )}
+
+          {GEN_FINALIZED.includes(claim.status) && !claim.finalized && (
+            <Card>
+              <h2 className="mb-2 font-display text-lg font-semibold text-on-surface">Base Settlement</h2>
+              <p className="text-sm text-on-surface-variant">GenLayer is final. The authenticated relayer is reconciling the exact agreement, open claim, evidence digest, and USDC distribution on Base Sepolia.</p>
+              <p className="mt-3 font-mono text-xs text-tertiary">State: {claim.settlementStatus || "NOT_READY"}</p>
+              {claim.settlementProposedTx && <p className="mt-2 break-all font-mono text-xs text-on-surface-variant">Proposal: {claim.settlementProposedTx}</p>}
             </Card>
           )}
 
           {claim.finalized && (
             <Card>
               <p className="font-mono text-sm text-secondary">
-                ✓ Finalized — settlement moved to withdrawable balances.
+                ✓ Base settlement executed and USDC transferred to the recipient wallets.
               </p>
+              {claim.settlementExecutedTx && <p className="mt-2 break-all font-mono text-xs text-on-surface-variant">{claim.settlementExecutedTx}</p>}
             </Card>
           )}
         </div>

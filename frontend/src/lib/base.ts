@@ -1,24 +1,30 @@
-import { createPublicClient, createWalletClient, custom, decodeEventLog, http, type Address } from "viem";
+import { createPublicClient, createWalletClient, custom, decodeEventLog, encodeAbiParameters, http, keccak256, stringToBytes, type Address, type Hash } from "viem";
 import { baseSepolia } from "viem/chains";
 
 export const BASE_SEPOLIA_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as const;
 const BASE_SEPOLIA_CHAIN_ID_HEX = "0x14a34";
 // Deployed Base Sepolia escrow. An environment value permits a future
 // redeployment without a source change.
-export const BASE_ESCROW_ADDRESS = (process.env.NEXT_PUBLIC_BASE_ESCROW_ADDRESS ?? "0x9656B5a51E94C7bDE57c3370420d617F7Cc2bD98") as Address;
+export const BASE_ESCROW_ADDRESS = (process.env.NEXT_PUBLIC_BASE_ESCROW_ADDRESS ?? "0x72020561a1fF7c95DD13E6Bfa9D3a5fb387072E3") as Address;
 
 export const baseEscrowAbi = [
   { type: "function", name: "nextAgreementId", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { type: "function", name: "propose", stateMutability: "nonpayable", inputs: [{ name: "customer", type: "address" }, { name: "escrowUsdc", type: "uint128" }, { name: "customerBondUsdc", type: "uint128" }, { name: "registrationDeadline", type: "uint64" }, { name: "termEnd", type: "uint64" }], outputs: [{ name: "agreementId", type: "uint256" }] },
+  { type: "function", name: "propose", stateMutability: "nonpayable", inputs: [{ name: "customer", type: "address" }, { name: "escrowUsdc", type: "uint128" }, { name: "customerBondUsdc", type: "uint128" }, { name: "registrationDeadline", type: "uint64" }, { name: "serviceEnd", type: "uint64" }, { name: "claimDeadline", type: "uint64" }, { name: "settlementDeadline", type: "uint64" }, { name: "termsHash", type: "bytes32" }], outputs: [{ name: "agreementId", type: "uint256" }] },
   { type: "function", name: "fundProvider", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }], outputs: [] },
-  { type: "function", name: "fundCustomer", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }], outputs: [] },
+  { type: "function", name: "acceptAndFundCustomer", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }], outputs: [] },
+  { type: "function", name: "openClaim", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }, { name: "claimId", type: "bytes32" }, { name: "observedWindowEnd", type: "uint64" }], outputs: [] },
+  { type: "function", name: "vetoSettlement", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }], outputs: [] },
+  { type: "function", name: "executeSettlement", stateMutability: "nonpayable", inputs: [{ name: "agreementId", type: "uint256" }], outputs: [] },
   {
     type: "function", name: "agreements", stateMutability: "view", inputs: [{ name: "agreementId", type: "uint256" }],
     outputs: [
       { name: "provider", type: "address" }, { name: "customer", type: "address" },
       { name: "escrowUsdc", type: "uint128" }, { name: "customerBondUsdc", type: "uint128" },
       { name: "providerDeposited", type: "uint128" }, { name: "customerDeposited", type: "uint128" },
-      { name: "registrationDeadline", type: "uint64" }, { name: "termEnd", type: "uint64" }, { name: "status", type: "uint8" },
+      { name: "registrationDeadline", type: "uint64" }, { name: "serviceEnd", type: "uint64" },
+      { name: "claimDeadline", type: "uint64" }, { name: "settlementDeadline", type: "uint64" },
+      { name: "customerAccepted", type: "bool" }, { name: "claimOpen", type: "bool" },
+      { name: "openClaimId", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "status", type: "uint8" },
     ],
   },
   {
@@ -26,7 +32,8 @@ export const baseEscrowAbi = [
       { name: "agreementId", type: "uint256", indexed: true }, { name: "provider", type: "address", indexed: true },
       { name: "customer", type: "address", indexed: true }, { name: "escrowUsdc", type: "uint256", indexed: false },
       { name: "customerBondUsdc", type: "uint256", indexed: false }, { name: "registrationDeadline", type: "uint64", indexed: false },
-      { name: "termEnd", type: "uint64", indexed: false },
+      { name: "serviceEnd", type: "uint64", indexed: false }, { name: "claimDeadline", type: "uint64", indexed: false },
+      { name: "settlementDeadline", type: "uint64", indexed: false }, { name: "termsHash", type: "bytes32", indexed: false },
     ],
   },
 ] as const;
@@ -115,33 +122,60 @@ export function agreementIdFromProposalReceipt(receipt: Awaited<ReturnType<typeo
 
 type BaseAgreement = {
   provider: Address; customer: Address; escrowUsdc: bigint; customerBondUsdc: bigint;
-  providerDeposited: bigint; customerDeposited: bigint; registrationDeadline: bigint; termEnd: bigint; status: number;
+  providerDeposited: bigint; customerDeposited: bigint; registrationDeadline: bigint; serviceEnd: bigint;
+  claimDeadline: bigint; settlementDeadline: bigint; customerAccepted: boolean; claimOpen: boolean;
+  openClaimId: Hash; termsHash: Hash; status: number;
 };
 
 export async function readBaseAgreement(agreementId: bigint): Promise<BaseAgreement> {
   const agreement = await basePublicClient.readContract({
     address: BASE_ESCROW_ADDRESS, abi: baseEscrowAbi, functionName: "agreements", args: [agreementId],
   });
-  const [provider, customer, escrowUsdc, customerBondUsdc, providerDeposited, customerDeposited, registrationDeadline, termEnd, status] = agreement;
-  return { provider, customer, escrowUsdc, customerBondUsdc, providerDeposited, customerDeposited, registrationDeadline, termEnd, status };
+  const [provider, customer, escrowUsdc, customerBondUsdc, providerDeposited, customerDeposited, registrationDeadline, serviceEnd, claimDeadline, settlementDeadline, customerAccepted, claimOpen, openClaimId, termsHash, status] = agreement;
+  return { provider, customer, escrowUsdc, customerBondUsdc, providerDeposited, customerDeposited, registrationDeadline, serviceEnd, claimDeadline, settlementDeadline, customerAccepted, claimOpen, openClaimId, termsHash, status };
 }
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Base RPC/indexing can lag just after a mined receipt. Retry the read-back. */
 export async function confirmBaseFunding(args: {
-  agreementId: bigint; provider: Address; customer: Address; escrowUsdc: bigint; customerBondUsdc: bigint; party: "provider" | "customer";
+  agreementId: bigint; provider: Address; customer: Address; escrowUsdc: bigint; customerBondUsdc: bigint; termsHash: Hash; party: "provider" | "customer";
 }) {
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const a = await readBaseAgreement(args.agreementId);
     const termsMatch = a.provider.toLowerCase() === args.provider.toLowerCase()
       && a.customer.toLowerCase() === args.customer.toLowerCase()
-      && a.escrowUsdc === args.escrowUsdc && a.customerBondUsdc === args.customerBondUsdc;
-    const funded = args.party === "provider" ? a.providerDeposited === args.escrowUsdc : a.customerDeposited === args.customerBondUsdc;
+      && a.escrowUsdc === args.escrowUsdc && a.customerBondUsdc === args.customerBondUsdc
+      && a.termsHash.toLowerCase() === args.termsHash.toLowerCase();
+    const funded = args.party === "provider" ? a.providerDeposited === args.escrowUsdc : a.customerAccepted && a.customerDeposited === args.customerBondUsdc;
     if (termsMatch && funded) return a;
     await pause(1_250);
   }
   throw new Error("Base receipt was mined but the escrow state did not confirm. Do not repeat the payment; refresh and check the Base transaction.");
+}
+
+export function claimIdToBytes32(claimId: string): Hash {
+  return keccak256(stringToBytes(claimId));
+}
+
+export function computeSlaTermsHash(args: {
+  provider: Address; customer: Address; escrowUsdc: bigint; customerBondUsdc: bigint;
+  registrationDeadline: bigint; serviceEnd: bigint; claimDeadline: bigint; settlementDeadline: bigint;
+  targetUptimeBps: bigint; penaltyRateUsdcPerMin: bigint; label: string; coveredService: string;
+  evidenceSources: string[]; exclusionTerms: string;
+}): Hash {
+  return keccak256(encodeAbiParameters(
+    [
+      { type: "uint256" }, { type: "address" }, { type: "address" }, { type: "address" },
+      { type: "uint128" }, { type: "uint128" }, { type: "uint64" }, { type: "uint64" },
+      { type: "uint64" }, { type: "uint64" }, { type: "uint256" }, { type: "uint256" },
+      { type: "string" }, { type: "string" }, { type: "string[]" }, { type: "string" },
+    ],
+    [84532n, BASE_ESCROW_ADDRESS, args.provider, args.customer, args.escrowUsdc, args.customerBondUsdc,
+      args.registrationDeadline, args.serviceEnd, args.claimDeadline, args.settlementDeadline,
+      args.targetUptimeBps, args.penaltyRateUsdcPerMin, args.label, args.coveredService,
+      args.evidenceSources, args.exclusionTerms],
+  ));
 }
 
 export const usdcAbi = [

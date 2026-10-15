@@ -49,6 +49,8 @@ export const contract = {
   listClaimIds: (offset: number, limit: number) =>
     readView<string[]>("list_claim_ids", [offset, limit]),
   getClaim: (claimId: string) => readView<Record<string, unknown>>("get_claim", [claimId]),
+  listClaimIdsPostWrite: (offset: number, limit: number) => readPostWrite<string[]>("list_claim_ids", [offset, limit]),
+  getClaimPostWrite: (claimId: string) => readPostWrite<Record<string, unknown>>("get_claim", [claimId]),
 };
 
 export { CONTRACT_ADDRESS };

@@ -1,8 +1,7 @@
 import { prisma } from "../db/client.js";
 import { contract } from "../genlayer/client.js";
 import { config } from "../config.js";
-import { relayResolvedClaim } from "../base/relayer.js";
-import { readBaseAgreementFunding } from "../base/relayer.js";
+import { assertBoundAgreement, readBaseAgreement, reconcileResolvedClaim } from "../base/relayer.js";
 
 /**
  * Uptime Arbiter indexer.
@@ -29,12 +28,16 @@ import { readBaseAgreementFunding } from "../base/relayer.js";
  *      a crash.
  */
 
-const NON_TERMINAL_SLA_STATUSES = ["PROPOSED", "ACTIVE"];
-const RESOLVED_CLAIM_STATUSES = [
-  "RESOLVED_BREACH",
-  "RESOLVED_PARTIAL",
-  "RESOLVED_NO_BREACH",
-];
+const NON_TERMINAL_SLA_STATUSES = ["PROPOSED", "ACTIVE", "SETTLEMENT_PENDING"];
+
+function registryStatus(baseStatus: number | undefined, providerFunded: boolean, customerSigned: boolean) {
+  if (baseStatus === 2) return "SETTLEMENT_PENDING";
+  if (baseStatus === 3 || baseStatus === 5) return "CONCLUDED";
+  if (baseStatus === 4) return "CANCELLED";
+  if (baseStatus === 1) return "ACTIVE";
+  return providerFunded && customerSigned ? "ACTIVE" : "PROPOSED";
+}
+const SETTLEMENT_CLAIM_STATUSES = ["FINALIZED_BREACH", "FINALIZED_PARTIAL", "FINALIZED_NO_BREACH"];
 
 const MAX_RPC_CALLS_PER_CYCLE = 6;
 
@@ -68,27 +71,36 @@ function toBigInt(v: unknown): bigint {
 /** Used by the post-write confirmation route as well as the background poller. */
 export async function upsertSla(slaId: string, knownSla?: Record<string, unknown>): Promise<void> {
   const sla = knownSla ?? await contract.getSla(slaId);
-  // Keep monetary display data anchored to Base Sepolia. If the Base RPC is
-  // temporarily unavailable, retain the prior cached amounts rather than
-  // inventing zero balances.
-  let baseFunding: Awaited<ReturnType<typeof readBaseAgreementFunding>> | undefined;
-  try {
-    const baseAgreementId = toStr(sla.base_agreement_id);
-    if (baseAgreementId) baseFunding = await readBaseAgreementFunding(baseAgreementId);
-  } catch (error) {
-    console.warn(`[indexer] Base agreement read failed for ${slaId}; retaining cached funding`, error);
+  let baseAgreement: Awaited<ReturnType<typeof readBaseAgreement>> | undefined;
+  const baseAgreementId = toStr(sla.base_agreement_id);
+  if (baseAgreementId) {
+    baseAgreement = await readBaseAgreement(baseAgreementId);
+    // Never mirror a caller-fabricated or conflicting GenLayer record. A
+    // temporary Base RPC failure retries the whole index cycle; a binding
+    // mismatch remains rejected until the underlying state genuinely agrees.
+    assertBoundAgreement({
+      agreement: baseAgreement,
+      provider: toStr(sla.provider), customer: toStr(sla.customer),
+      maxPayoutUsdc: toStr(sla.max_payout_usdc), customerBondUsdc: toStr(sla.customer_bond_usdc),
+      serviceEnd: toStr(sla.term_end_ts), claimDeadline: toStr(sla.claim_deadline_ts),
+      settlementDeadline: toStr(sla.settlement_deadline_ts), termsHash: toStr(sla.base_terms_hash),
+    });
   }
   const providerFunded = toStr(sla.provider_base_funding_tx) !== "";
   const customerSigned = toStr(sla.customer_base_funding_tx) !== "";
   // The GenLayer contract records funding receipts but does not custody
   // USDC. Derive the registry lifecycle honestly: an agreement is active
   // only after both Base-side funding acknowledgements exist.
-  const status = providerFunded && customerSigned ? "ACTIVE" : "PROPOSED";
+  // Base is the custody/lifecycle authority. GenLayer funding receipts prove
+  // the cross-chain acknowledgment, but cannot keep a refunded or settled
+  // escrow looking ACTIVE in the registry.
+  const status = registryStatus(baseAgreement === undefined ? undefined : Number(baseAgreement.status), providerFunded, customerSigned);
   await prisma.slaAgreement.upsert({
     where: { slaId },
     create: {
       slaId,
       baseAgreementId: toStr(sla.base_agreement_id),
+      baseTermsHash: toStr(sla.base_terms_hash),
       provider: toStr(sla.provider),
       customer: toStr(sla.customer),
       label: toStr(sla.label),
@@ -99,13 +111,13 @@ export async function upsertSla(slaId: string, knownSla?: Record<string, unknown
       // migration; values are six-decimal Base USDC units from the
       // adjudicator, never a GenLayer balance.
       penaltyRateWeiPerMin: toStr(sla.penalty_rate_usdc_per_min),
-      escrowWei: baseFunding?.escrowUsdc.toString() ?? toStr(sla.max_payout_usdc),
-      escrowDeposited: baseFunding?.providerDeposited.toString() ?? "0",
-      bondWei: baseFunding?.customerBondUsdc.toString() ?? "0",
-      bondDeposited: baseFunding?.customerDeposited.toString() ?? "0",
+      escrowWei: baseAgreement?.escrowUsdc.toString() ?? toStr(sla.max_payout_usdc),
+      escrowDeposited: baseAgreement?.providerDeposited.toString() ?? "0",
+      bondWei: baseAgreement?.customerBondUsdc.toString() ?? toStr(sla.customer_bond_usdc),
+      bondDeposited: baseAgreement?.customerDeposited.toString() ?? "0",
       challengeBondWei: "0",
       toleranceMinutes: 0,
-      challengeWindowSeconds: 0,
+      challengeWindowSeconds: Number(sla.challenge_window_seconds ?? 0),
       termSeconds: Number(sla.term_end_ts ?? 0) - Number(sla.term_start_ts ?? 0),
       evidenceSources: toStrArray(sla.evidence_sources),
       exclusionTerms: toStr(sla.exclusion_terms),
@@ -118,15 +130,19 @@ export async function upsertSla(slaId: string, knownSla?: Record<string, unknown
       registrationDeadlineTs: BigInt(0),
       termStartTs: toBigInt(sla.term_start_ts),
       termEndTs: toBigInt(sla.term_end_ts),
+      claimDeadlineTs: toBigInt(sla.claim_deadline_ts),
+      settlementDeadlineTs: toBigInt(sla.settlement_deadline_ts),
+      publicationLagSeconds: Number(sla.publication_lag_seconds ?? 0),
       activeClaimId: toStr(sla.active_claim_id),
     },
     update: {
       baseAgreementId: toStr(sla.base_agreement_id),
-      ...(baseFunding ? {
-        escrowWei: baseFunding.escrowUsdc.toString(),
-        escrowDeposited: baseFunding.providerDeposited.toString(),
-        bondWei: baseFunding.customerBondUsdc.toString(),
-        bondDeposited: baseFunding.customerDeposited.toString(),
+      baseTermsHash: toStr(sla.base_terms_hash),
+      ...(baseAgreement ? {
+        escrowWei: baseAgreement.escrowUsdc.toString(),
+        escrowDeposited: baseAgreement.providerDeposited.toString(),
+        bondWei: baseAgreement.customerBondUsdc.toString(),
+        bondDeposited: baseAgreement.customerDeposited.toString(),
       } : {}),
       adjudicatedWindows: [],
       status,
@@ -134,18 +150,21 @@ export async function upsertSla(slaId: string, knownSla?: Record<string, unknown
       customerSigned,
       termStartTs: toBigInt(sla.term_start_ts),
       termEndTs: toBigInt(sla.term_end_ts),
+      claimDeadlineTs: toBigInt(sla.claim_deadline_ts),
+      settlementDeadlineTs: toBigInt(sla.settlement_deadline_ts),
+      publicationLagSeconds: Number(sla.publication_lag_seconds ?? 0),
+      challengeWindowSeconds: Number(sla.challenge_window_seconds ?? 0),
       activeClaimId: toStr(sla.active_claim_id),
     },
   });
 }
 
-async function upsertClaim(claimId: string): Promise<void> {
-  const claim = await contract.getClaim(claimId);
-  // GenLayer's optional `relayed` marker is not controlled by this service.
-  // Persist the Base transaction completion locally so a subsequent polling pass
-  // can never attempt a second settlement for the same immutable Base escrow.
-  const existing = await prisma.claim.findUnique({ where: { claimId }, select: { finalized: true } });
-  const finalized = existing?.finalized ?? Boolean(claim.relayed);
+export async function upsertClaim(claimId: string, knownClaim?: Record<string, unknown>): Promise<void> {
+  const claim = knownClaim ?? await contract.getClaim(claimId);
+  const existing = await prisma.claim.findUnique({ where: { claimId } });
+  const finalized = existing?.finalized ?? false;
+  const challengeCount = Number(claim.challenge_count ?? 0);
+  const challengeId = challengeCount > 0 ? `CH-${claimId}` : "";
   await prisma.claim.upsert({
     where: { claimId },
     create: {
@@ -162,8 +181,11 @@ async function upsertClaim(claimId: string): Promise<void> {
       inconclusiveReason: toStr(claim.inconclusive_reason),
       recommendedPayoutBps: Number(claim.payout_bps ?? 0),
       payoutWei: toStr(claim.payout_usdc),
-      resolvedAt: toStr(claim.resolved_at),
-      challengeDeadlineTs: BigInt(0), challengeCount: 0, activeChallengeId: "", isChallenged: false, finalized,
+      resolvedAt: toStr(claim.finalized_at_ts),
+      challengeDeadlineTs: toBigInt(claim.challenge_deadline_ts), challengeCount,
+      activeChallengeId: challengeId, isChallenged: toStr(claim.status) === "CHALLENGED", finalized,
+      evidenceReportJson: toStr(claim.evidence_report_json), evidenceDigest: toStr(claim.evidence_digest),
+      evaluatedAtTs: toBigInt(claim.evaluated_at_ts), settlementStatus: existing?.settlementStatus ?? "NOT_READY",
     },
     update: {
       status: toStr(claim.status),
@@ -171,22 +193,47 @@ async function upsertClaim(claimId: string): Promise<void> {
       inconclusiveReason: toStr(claim.inconclusive_reason),
       recommendedPayoutBps: Number(claim.payout_bps ?? 0),
       payoutWei: toStr(claim.payout_usdc),
-      resolvedAt: toStr(claim.resolved_at),
-      challengeDeadlineTs: BigInt(0), challengeCount: 0, activeChallengeId: "", isChallenged: false, finalized,
+      resolvedAt: toStr(claim.finalized_at_ts),
+      challengeDeadlineTs: toBigInt(claim.challenge_deadline_ts), challengeCount,
+      activeChallengeId: challengeId, isChallenged: toStr(claim.status) === "CHALLENGED", finalized,
+      evidenceReportJson: toStr(claim.evidence_report_json), evidenceDigest: toStr(claim.evidence_digest),
+      evaluatedAtTs: toBigInt(claim.evaluated_at_ts),
     },
   });
-  const isResolved = ["RESOLVED_BREACH", "RESOLVED_PARTIAL", "RESOLVED_NO_BREACH"].includes(toStr(claim.status));
-  if (isResolved && !finalized) {
+  if (challengeCount > 0) {
+    await prisma.challenge.upsert({
+      where: { challengeId },
+      create: {
+        challengeId, claimId, challenger: toStr(claim.challenger),
+        additionalSources: toStrArray(claim.challenge_sources), rationale: toStr(claim.challenge_rationale),
+        bondWei: "0", bondDeposited: "0", filedAt: "", resolved: toStr(claim.status) !== "CHALLENGED",
+        outcome: toStr(claim.status), resolvedAt: toStr(claim.evaluated_at_ts),
+        priorBreachMinutes: 0, newBreachMinutes: Number(claim.breach_minutes ?? 0),
+      },
+      update: {
+        resolved: toStr(claim.status) !== "CHALLENGED", outcome: toStr(claim.status),
+        resolvedAt: toStr(claim.evaluated_at_ts), newBreachMinutes: Number(claim.breach_minutes ?? 0),
+      },
+    });
+  }
+  if (SETTLEMENT_CLAIM_STATUSES.includes(toStr(claim.status)) && !finalized) {
     const sla = await contract.getSla(toStr(claim.sla_id));
-    const txHash = await relayResolvedClaim({
+    const result = await reconcileResolvedClaim({
       baseAgreementId: toStr(sla.base_agreement_id),
       claimId,
-      payoutUsdc: toStr(claim.payout_usdc),
-      verdict: toStr(claim.status),
+      evidenceDigest: toStr(claim.evidence_digest), penaltyPayoutUsdc: toStr(claim.payout_usdc),
+      provider: toStr(sla.provider), customer: toStr(sla.customer),
+      maxPayoutUsdc: toStr(sla.max_payout_usdc), customerBondUsdc: toStr(sla.customer_bond_usdc),
+      serviceEnd: toStr(sla.term_end_ts), claimDeadline: toStr(sla.claim_deadline_ts),
+      settlementDeadline: toStr(sla.settlement_deadline_ts), termsHash: toStr(sla.base_terms_hash),
     });
-    await prisma.claim.update({ where: { claimId }, data: { finalized: true } });
-    // eslint-disable-next-line no-console
-    console.log(`[relay] ${claimId} settled on Base Sepolia: ${txHash}`);
+    await prisma.claim.update({ where: { claimId }, data: {
+      finalized: result.status === "EXECUTED",
+      settlementStatus: result.status,
+      ...(result.status === "PROPOSED" && result.txHash ? { settlementProposedTx: result.txHash } : {}),
+      ...(result.status === "EXECUTED" && result.txHash ? { settlementExecutedTx: result.txHash } : {}),
+    } });
+    console.log(`[relay] ${claimId} Base settlement state: ${result.status}${result.txHash ? ` ${result.txHash}` : ""}`);
   }
 }
 
@@ -269,8 +316,8 @@ async function refreshNonTerminal(budget: Budget): Promise<void> {
     where: {
       syncedAt: { lt: staleBefore },
       OR: [
-        { status: "PINNED" },
-        { AND: [{ status: { in: RESOLVED_CLAIM_STATUSES } }, { finalized: false }] },
+        { status: { in: ["PINNED", "CHALLENGED", "PROVISIONAL_BREACH", "PROVISIONAL_PARTIAL", "PROVISIONAL_NO_BREACH", "PROVISIONAL_INCONCLUSIVE"] } },
+        { AND: [{ status: { in: SETTLEMENT_CLAIM_STATUSES } }, { finalized: false }] },
       ],
     },
     orderBy: { syncedAt: "asc" },

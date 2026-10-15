@@ -7,7 +7,7 @@ import type { CalldataEncodable } from "genlayer-js/types";
 // deployment. This is the verified StudioNet adjudicator; deployment
 // configuration may override it only for an intentional future migration.
 export const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
-  "0x1798573a1C99b5250881666999d8C3486E5cA4f1") as `0x${string}`;
+  "0x3C81652798479Af674294155e5bf05C5F42D46f7") as `0x${string}`;
 
 type Eip1193Provider = { request(args: { method: string; params?: unknown[] }): Promise<unknown> };
 const STUDIONET_CHAIN_ID_HEX = `0x${studionet.id.toString(16)}`;
@@ -80,23 +80,25 @@ export async function writeContractMethod(
     value: value ?? 0n,
   });
 
-  // Track real on-chain lifecycle via the SDK's own status polling — never
-  // a client-side timer standing in for it. We wait for ACCEPTED, not
-  // FINALIZED: state changes (escrow locked, claim pinned, verdict
-  // recorded, ...) already apply once a transaction is ACCEPTED —
-  // FINALIZED only means the appeal window has additionally closed. The
-  // SDK's own default retry budget (3s interval x 10 retries = 30s) is
-  // tuned for ACCEPTED, not for FINALIZED, which routinely takes longer
-  // than that; waiting on FINALIZED with the default budget was
-  // surfacing "Timed out... (current status: 5)" — status 5 is ACCEPTED,
-  // i.e. the write had already succeeded — as if it were a failure.
+  // Financially consequential follow-up work is permitted only after the
+  // GenLayer appeal/finalization window closes. ACCEPTED consensus alone is
+  // intentionally insufficient: an accepted execution can still be appealed,
+  // and a consensus-accepted transaction can contain a contract execution error.
   try {
     const receipt = await client.waitForTransactionReceipt({
       hash: txId,
-      status: TransactionStatus.ACCEPTED,
-      interval: 2_500,
-      retries: 60, // up to ~2.5 minutes, generous for a normal consensus round
+      status: TransactionStatus.FINALIZED,
+      interval: 5_000,
+      retries: 120,
     });
+    const candidate = receipt as unknown as { consensus_data?: { leader_receipt?: unknown } };
+    const rawLeader = candidate.consensus_data?.leader_receipt;
+    const leader = Array.isArray(rawLeader) ? rawLeader[0] : rawLeader;
+    const execution = leader as { execution_result?: string; genvm_result?: { status?: string }; result?: string } | undefined;
+    const status = execution?.execution_result ?? execution?.genvm_result?.status;
+    if (typeof status === "string" && status.toUpperCase() === "ERROR") {
+      throw new Error(`GenLayer transaction finalized with a contract execution error: ${txId}`);
+    }
     return { txId, receipt, timedOut: false };
   } catch (err) {
     // The transaction was already submitted and broadcast at this point —
@@ -106,8 +108,7 @@ export async function writeContractMethod(
     // the explorer or a subsequent read rather than silently losing the
     // reference to a transaction that may well succeed a minute later.
     const message = err instanceof Error ? err.message : String(err);
-    // eslint-disable-next-line no-console
-    console.warn(`waitForTransactionReceipt gave up on ${txId}, tx may still finalize:`, message);
+    console.warn(`waitForTransactionReceipt gave up on ${txId}; no dependent action will run:`, message);
     return { txId, receipt: null, timedOut: true };
   }
 }

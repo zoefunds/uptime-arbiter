@@ -10,10 +10,11 @@ import { StatusChip, EmptyState, ErrorState, LoadingState } from "@/components/u
 const FILTERS = [
   { value: undefined, label: "All" },
   { value: "PINNED", label: "Evaluating" },
-  { value: "RESOLVED_BREACH", label: "Breach" },
-  { value: "RESOLVED_PARTIAL", label: "Partial" },
-  { value: "RESOLVED_NO_BREACH", label: "No Breach" },
-  { value: "INCONCLUSIVE", label: "Inconclusive" },
+  { value: "CHALLENGED", label: "Challenged" },
+  { value: "FINALIZED_BREACH", label: "Final Breach" },
+  { value: "FINALIZED_PARTIAL", label: "Final Partial" },
+  { value: "FINALIZED_NO_BREACH", label: "Final No Breach" },
+  { value: "FINALIZED_INCONCLUSIVE", label: "Inconclusive" },
 ];
 
 export default function ClaimsPage() {

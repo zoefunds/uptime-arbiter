@@ -5,11 +5,11 @@ import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { formatUsdc, formatTs, shortAddress, STATUS_LABELS } from "@/lib/format";
+import { formatUsdc, formatTs, shortAddress } from "@/lib/format";
 import { Card, StatusChip, Button, LoadingState, ErrorState } from "@/components/ui";
 import { useGenlayerWrite } from "@/hooks/use-genlayer-write";
 import { useBaseUsdcWrite } from "@/hooks/use-base-usdc-write";
-import { readBaseAgreement } from "@/lib/base";
+import { claimIdToBytes32, readBaseAgreement } from "@/lib/base";
 
 export default function SlaDetailPage({ params }: { params: Promise<{ slaId: string }> }) {
   const { slaId } = use(params);
@@ -41,7 +41,6 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
   const isProvider = address?.toLowerCase() === sla.provider.toLowerCase();
   const isCustomer = address?.toLowerCase() === sla.customer.toLowerCase();
   const escrowActive = sla.providerFunded && sla.customerSigned;
-  const now = Math.floor(Date.now() / 1000);
 
   async function refresh() {
     await Promise.all([
@@ -69,12 +68,12 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
 
   async function handleCoSign() {
     const value = baseAgreement?.customerBondUsdc;
-    if (!value || value <= 0n) throw new Error("The Base escrow bond is still loading. Wait a moment and try again.");
+    if (value === undefined) throw new Error("The Base escrow bond is still loading. Wait a moment and try again.");
     if (address?.toLowerCase() !== baseAgreement?.customer.toLowerCase()) {
       throw new Error(`Connect the Base customer wallet ${baseAgreement?.customer ?? sla.customer} before bonding this escrow.`);
     }
-    await approveUsdc(value);
-    const hash = await sendBase("fundCustomer", [BigInt(sla.baseAgreementId)]);
+    if (value > 0n) await approveUsdc(value);
+    const hash = await sendBase("acceptAndFundCustomer", [BigInt(sla.baseAgreementId)]);
     if (!hash) return;
     await waitForBaseReceipt(hash);
     setActivationMessage("Recording the Base customer bond receipt on GenLayer…");
@@ -91,7 +90,30 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
     const endTs = Math.floor(new Date(windowEnd).getTime() / 1000);
     if (!startTs || !endTs || endTs <= startTs) return;
     const ok = await send("submit_claim", [sla.slaId, startTs, endTs]);
-    if (ok) refresh();
+    if (!ok || !address) return;
+    setActivationMessage("Confirming the finalized GenLayer claim record…");
+    const { claimId } = await api.confirmClaimSubmission({
+      slaId: sla.slaId, claimant: address, windowStartTs: String(startTs), windowEndTs: String(endTs),
+    });
+    setActivationMessage("Locking the matching claim window on Base so escrow cannot expire while adjudication is pending…");
+    const baseClaimTx = await sendBase("openClaim", [BigInt(sla.baseAgreementId), claimIdToBytes32(claimId), BigInt(endTs)]);
+    if (!baseClaimTx) throw new Error("Base claim lock was not submitted");
+    await waitForBaseReceipt(baseClaimTx);
+    setActivationMessage(`Claim ${claimId} is bound on GenLayer and Base Sepolia.`);
+    await refresh();
+  }
+
+  async function handleResumeBaseClaimLock() {
+    const claim = claims.find((item) => item.claimId === sla.activeClaimId);
+    if (!claim) throw new Error("The finalized GenLayer claim has not reached the backend index yet. Wait for the next refresh.");
+    setActivationMessage(`Resuming Base protection for ${claim.claimId}…`);
+    const hash = await sendBase("openClaim", [
+      BigInt(sla.baseAgreementId), claimIdToBytes32(claim.claimId), BigInt(claim.windowEndTs),
+    ]);
+    if (!hash) throw new Error("Base claim lock was not submitted");
+    await waitForBaseReceipt(hash);
+    setActivationMessage(`Claim ${claim.claimId} is now protected on Base Sepolia.`);
+    await refresh();
   }
 
   return (
@@ -116,7 +138,7 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
       )}
       {txId && !writeWarning && (
         <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">
-          Transaction accepted: {txId}
+          Transaction finalized: {txId}
         </div>
       )}
       {baseTxHash && <div className="rounded bg-secondary/10 px-4 py-3 font-mono text-xs text-secondary">Base Sepolia transaction submitted: {baseTxHash}</div>}
@@ -143,10 +165,12 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
               <Field label="Target Uptime" value={`${(sla.targetUptimeBps / 100).toFixed(2)}%`} />
               <Field label="Grace (derived)" value={`${sla.graceMinutes} min`} />
               <Field label="Penalty Rate" value={`${formatUsdc(sla.penaltyRateWeiPerMin)} USDC/min`} />
-              <Field label="Tolerance" value={`± ${sla.toleranceMinutes} min`} />
               <Field label="Challenge Window" value={`${(sla.challengeWindowSeconds / 3600).toFixed(0)}h`} />
+              <Field label="Evidence Publication Lag" value={`${Math.round(sla.publicationLagSeconds / 60)} min`} />
               <Field label="Term Start" value={sla.termStartTs === "0" ? "—" : formatTs(sla.termStartTs)} />
               <Field label="Term End" value={sla.termEndTs === "0" ? "—" : formatTs(sla.termEndTs)} />
+              <Field label="Claim Deadline" value={formatTs(sla.claimDeadlineTs)} />
+              <Field label="Settlement Deadline" value={formatTs(sla.settlementDeadlineTs)} />
             </div>
           </Card>
 
@@ -165,8 +189,8 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
               ))}
             </div>
             <div className="mt-3 rounded bg-surface-container-lowest px-3 py-2 font-mono text-[11px] text-on-surface-variant">
-              Fingerprint: <span className="text-primary">{sla.sourceDigest}</span> — immutable once
-              both parties fund the SLA.
+              Base terms binding: <span className="break-all text-primary">{sla.baseTermsHash}</span>. The
+              source list and all financial/deadline terms are committed by this hash.
             </div>
             {sla.exclusionTerms && (
               <div className="mt-3 rounded bg-surface-container p-3 text-xs text-on-surface-variant">
@@ -267,6 +291,11 @@ export default function SlaDetailPage({ params }: { params: Promise<{ slaId: str
               >
                 {sla.activeClaimId} →
               </Link>
+              {isCustomer && baseAgreement?.status === 1 && !baseAgreement.claimOpen && (
+                <Button className="mt-4 w-full" disabled={basePending} onClick={handleResumeBaseClaimLock}>
+                  {basePending ? "Locking claim on Base…" : "Resume Base claim lock"}
+                </Button>
+              )}
             </Card>
           )}
         </div>

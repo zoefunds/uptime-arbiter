@@ -24,16 +24,16 @@ export function StatusChip({ status }: { status: string }) {
 }
 
 function statusTone(status: string) {
-  if (["ACTIVE", "RESOLVED_NO_BREACH"].includes(status)) {
+  if (["ACTIVE", "PROVISIONAL_NO_BREACH", "FINALIZED_NO_BREACH", "EXECUTED"].includes(status)) {
     return { bg: "bg-secondary/10", text: "text-secondary", dot: "bg-secondary" };
   }
-  if (["PROPOSED", "PINNED"].includes(status)) {
+  if (["PROPOSED", "PINNED", "CHALLENGED"].includes(status)) {
     return { bg: "bg-tertiary/10", text: "text-tertiary", dot: "bg-tertiary animate-pulse" };
   }
-  if (["RESOLVED_BREACH", "RESOLVED_PARTIAL"].includes(status)) {
+  if (["PROVISIONAL_BREACH", "PROVISIONAL_PARTIAL", "FINALIZED_BREACH", "FINALIZED_PARTIAL"].includes(status)) {
     return { bg: "bg-error/10", text: "text-error", dot: "bg-error" };
   }
-  if (status === "INCONCLUSIVE") {
+  if (status.includes("INCONCLUSIVE")) {
     return { bg: "bg-outline/10", text: "text-on-surface-variant", dot: "bg-outline" };
   }
   return { bg: "bg-surface-container-high", text: "text-on-surface-variant", dot: "bg-outline" };

@@ -16,6 +16,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export interface SlaRow {
   slaId: string;
   baseAgreementId: string;
+  baseTermsHash: string;
   provider: string;
   customer: string;
   label: string;
@@ -42,6 +43,9 @@ export interface SlaRow {
   registrationDeadlineTs: string;
   termStartTs: string;
   termEndTs: string;
+  claimDeadlineTs: string;
+  settlementDeadlineTs: string;
+  publicationLagSeconds: number;
   activeClaimId: string;
 }
 
@@ -65,6 +69,13 @@ export interface ClaimRow {
   activeChallengeId: string;
   isChallenged: boolean;
   finalized: boolean;
+  evidenceReportJson: string;
+  evidenceDigest: string;
+  evaluatedAtTs: string;
+  baseClaimOpenedTx: string;
+  settlementProposedTx: string;
+  settlementExecutedTx: string;
+  settlementStatus: string;
 }
 
 export interface ChallengeRow {
@@ -113,6 +124,10 @@ export const api = {
     request<{ slaId: string }>("/slas/confirm-registration", { method: "POST", body: JSON.stringify(input) }),
   confirmFunding: (slaId: string, input: { role: "PROVIDER" | "CUSTOMER"; baseFundingTx: string }) =>
     request<{ status: "PROPOSED" | "ACTIVE" }>(`/slas/${slaId}/confirm-funding`, { method: "POST", body: JSON.stringify(input) }),
+  confirmClaimSubmission: (input: { slaId: string; claimant: string; windowStartTs: string; windowEndTs: string }) =>
+    request<{ claimId: string }>("/claims/confirm-submission", { method: "POST", body: JSON.stringify(input) }),
+  refreshClaim: (claimId: string) =>
+    request<{ status: string }>(`/claims/${claimId}/refresh`, { method: "POST" }),
 
   listClaims: (params: { status?: string; slaId?: string; claimant?: string; page?: number } = {}) => {
     const qs = new URLSearchParams();

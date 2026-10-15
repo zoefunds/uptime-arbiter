@@ -8,7 +8,7 @@ import { useBaseUsdcWrite } from "@/hooks/use-base-usdc-write";
 import { useGenlayerWrite } from "@/hooks/use-genlayer-write";
 import { usdcToUnits } from "@/lib/format";
 import { api } from "@/lib/api";
-import { agreementIdFromProposalReceipt, baseUsdcBalance, confirmBaseFunding } from "@/lib/base";
+import { agreementIdFromProposalReceipt, baseUsdcBalance, computeSlaTermsHash, confirmBaseFunding } from "@/lib/base";
 import { isAddress } from "viem";
 
 const DAY = 24 * 3600;
@@ -32,9 +32,10 @@ const SAMPLE_VALUES = {
   penaltyRate: "0.01",
   escrow: "1",
   bond: "0.2",
-  challengeBond: "2500",
-  tolerance: "2",
   challengeWindowHours: "72",
+  publicationLagMinutes: "60",
+  claimFilingDays: "2",
+  settlementDaysAfterClaim: "7",
   termDays: "30",
   registrationTtlDays: "7",
   exclusionTerms:
@@ -56,9 +57,10 @@ export default function RegisterSlaPage() {
   const [penaltyRate, setPenaltyRate] = useState("250");
   const [escrow, setEscrow] = useState("50000");
   const [bond, setBond] = useState("5000");
-  const [challengeBond, setChallengeBond] = useState("2500");
-  const [tolerance, setTolerance] = useState("2");
   const [challengeWindowHours, setChallengeWindowHours] = useState("72");
+  const [publicationLagMinutes, setPublicationLagMinutes] = useState("60");
+  const [claimFilingDays, setClaimFilingDays] = useState("2");
+  const [settlementDaysAfterClaim, setSettlementDaysAfterClaim] = useState("7");
   const [termDays, setTermDays] = useState("30");
   const [registrationTtlDays, setRegistrationTtlDays] = useState("7");
   const [sources, setSources] = useState(["", "", ""]);
@@ -95,9 +97,10 @@ export default function RegisterSlaPage() {
     setPenaltyRate(SAMPLE_VALUES.penaltyRate);
     setEscrow(SAMPLE_VALUES.escrow);
     setBond(SAMPLE_VALUES.bond);
-    setChallengeBond(SAMPLE_VALUES.challengeBond);
-    setTolerance(SAMPLE_VALUES.tolerance);
     setChallengeWindowHours(SAMPLE_VALUES.challengeWindowHours);
+    setPublicationLagMinutes(SAMPLE_VALUES.publicationLagMinutes);
+    setClaimFilingDays(SAMPLE_VALUES.claimFilingDays);
+    setSettlementDaysAfterClaim(SAMPLE_VALUES.settlementDaysAfterClaim);
     setTermDays(SAMPLE_VALUES.termDays);
     setRegistrationTtlDays(SAMPLE_VALUES.registrationTtlDays);
     setSources(SAMPLE_SOURCES);
@@ -133,11 +136,24 @@ export default function RegisterSlaPage() {
       const now = Math.floor(Date.now() / 1000);
       const escrowUnits = usdcToUnits(escrow);
       const bondUnits = usdcToUnits(bond);
+      const penaltyUnits = usdcToUnits(penaltyRate);
+      const registrationDeadline = BigInt(now + Number(registrationTtlDays) * DAY);
+      const serviceEnd = BigInt(now + Number(termDays) * DAY);
+      const claimDeadline = serviceEnd + BigInt(Number(claimFilingDays) * DAY);
+      const settlementDeadline = claimDeadline + BigInt(Number(settlementDaysAfterClaim) * DAY);
+      const labelValue = label.trim() || "Unlabeled SLA";
+      const termsHash = computeSlaTermsHash({
+        provider: providerAddress, customer: customer as `0x${string}`, escrowUsdc: escrowUnits,
+        customerBondUsdc: bondUnits, registrationDeadline, serviceEnd, claimDeadline, settlementDeadline,
+        targetUptimeBps: BigInt(Math.round(Number(targetUptimePct) * 100)), penaltyRateUsdcPerMin: penaltyUnits,
+        label: labelValue, coveredService: coveredService.trim(), evidenceSources: cleanSources,
+        exclusionTerms: exclusionTerms.trim(),
+      });
       setProgress("Checking your Base Sepolia USDC balance…");
       const balance = await baseUsdcBalance(providerAddress);
       if (balance < escrowUnits) throw new Error(`Insufficient Base Sepolia USDC. This SLA needs ${escrow} USDC from the provider.`);
       setProgress("Confirm the Base Sepolia SLA proposal in your wallet…");
-      const proposalTx = await sendBase("propose", [customer, escrowUnits, bondUnits, BigInt(now + Number(registrationTtlDays) * DAY), BigInt(now + Number(termDays) * DAY)]);
+      const proposalTx = await sendBase("propose", [customer, escrowUnits, bondUnits, registrationDeadline, serviceEnd, claimDeadline, settlementDeadline, termsHash]);
       if (!proposalTx) throw new Error("Base Sepolia proposal was not submitted");
       const proposalReceipt = await waitForBaseReceipt(proposalTx);
       const baseAgreementId = agreementIdFromProposalReceipt(proposalReceipt);
@@ -153,14 +169,16 @@ export default function RegisterSlaPage() {
       setProgress("Verifying the exact provider USDC deposit in the Base escrow…");
       await confirmBaseFunding({
         agreementId: baseAgreementId, provider: providerAddress, customer: customer as `0x${string}`,
-        escrowUsdc: escrowUnits, customerBondUsdc: bondUnits, party: "provider",
+        escrowUsdc: escrowUnits, customerBondUsdc: bondUnits, termsHash, party: "provider",
       });
 
       setProgress("Registering the adjudication terms on GenLayer…");
       const adjudicationTx = await sendGenlayer("register_adjudication", [
-        Number(baseAgreementId), customer, label || "Unlabeled SLA", coveredService.trim(),
-        Math.round(Number(targetUptimePct) * 100), usdcToUnits(penaltyRate).toString(),
-        usdcToUnits(escrow).toString(), now, now + Number(termDays) * DAY, cleanSources, exclusionTerms.trim(), BigInt(fundingTx),
+        Number(baseAgreementId), BigInt(termsHash), customer, labelValue, coveredService.trim(),
+        Math.round(Number(targetUptimePct) * 100), penaltyUnits.toString(), escrowUnits.toString(),
+        bondUnits.toString(), now, Number(serviceEnd), Number(claimDeadline), Number(settlementDeadline),
+        Number(publicationLagMinutes) * 60, Number(challengeWindowHours) * 3600,
+        cleanSources, exclusionTerms.trim(), BigInt(fundingTx),
       ]);
       if (!adjudicationTx) throw new Error("GenLayer adjudication registration was not submitted");
       setProgress("Confirming the persisted GenLayer adjudication record…");
@@ -252,7 +270,6 @@ export default function RegisterSlaPage() {
           />
           <NumField label="Provider Escrow (USDC)" value={escrow} onChange={setEscrow} step="0.01" />
           <NumField label="Customer Bond (USDC)" value={bond} onChange={setBond} step="0.01" />
-          <NumField label="Challenge Bond (USDC)" value={challengeBond} onChange={setChallengeBond} step="0.01" />
           <NumField label="Penalty Rate (USDC/min)" value={penaltyRate} onChange={setPenaltyRate} step="0.01" />
         </div>
       </Card>
@@ -261,8 +278,10 @@ export default function RegisterSlaPage() {
         <h2 className="mb-4 font-display text-lg font-semibold text-on-surface">2. SLA Parameters</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <NumField label="Target Uptime (%)" value={targetUptimePct} onChange={setTargetUptimePct} step="0.01" />
-          <NumField label="Equivalence Tolerance (minutes)" value={tolerance} onChange={setTolerance} />
           <NumField label="Challenge Window (hours)" value={challengeWindowHours} onChange={setChallengeWindowHours} />
+          <NumField label="Evidence Publication Lag (minutes)" value={publicationLagMinutes} onChange={setPublicationLagMinutes} />
+          <NumField label="Claim Filing Period After Service End (days)" value={claimFilingDays} onChange={setClaimFilingDays} />
+          <NumField label="Settlement Recovery Period After Claim Deadline (days)" value={settlementDaysAfterClaim} onChange={setSettlementDaysAfterClaim} />
           <NumField label="SLA Term (days)" value={termDays} onChange={setTermDays} />
           <NumField label="Registration Deadline (days)" value={registrationTtlDays} onChange={setRegistrationTtlDays} />
           <div className="flex flex-col gap-1">

@@ -5,7 +5,6 @@ import { baseSepolia } from "viem/chains";
 export const reownProjectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID ?? "";
 
 if (!reownProjectId && typeof window !== "undefined") {
-  // eslint-disable-next-line no-console
   console.warn("NEXT_PUBLIC_REOWN_PROJECT_ID is not set — wallet connect will not work.");
 }
 

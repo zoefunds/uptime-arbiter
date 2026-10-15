@@ -16,14 +16,22 @@ export function useBaseUsdcWrite() {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [progress, setProgress] = useState<BaseTransactionProgress>({ stage: "idle", message: "", txHash: null });
-  const send = useCallback(async (method: "propose" | "fundProvider" | "fundCustomer", args: readonly unknown[]) => {
+  const send = useCallback(async (method: "propose" | "fundProvider" | "acceptAndFundCustomer" | "openClaim" | "vetoSettlement" | "executeSettlement" | "recoverExpired" | "cancelOrReclaim", args: readonly unknown[]) => {
     if (!address || !connector) throw new Error("Connect a Base Sepolia wallet first");
     setPending(true); setError(null); setTxHash(null);
     try {
       const provider = await connector.getProvider();
       setProgress({ stage: "preparing", message: "Checking the active Base Sepolia wallet…", txHash: null });
       await assertBaseSigningAccount(provider, address);
-      setProgress({ stage: "awaiting-wallet", message: `Confirm the ${method === "propose" ? "SLA proposal" : method === "fundProvider" ? "provider escrow deposit" : "customer bond deposit"} in your wallet.`, txHash: null });
+      const action = method === "propose" ? "SLA proposal"
+        : method === "fundProvider" ? "provider escrow deposit"
+        : method === "acceptAndFundCustomer" ? "customer acceptance and bond deposit"
+        : method === "openClaim" ? "Base claim lock"
+        : method === "vetoSettlement" ? "settlement veto"
+        : method === "executeSettlement" ? "settlement execution"
+        : method === "recoverExpired" ? "expired agreement recovery"
+        : "agreement cancellation";
+      setProgress({ stage: "awaiting-wallet", message: `Confirm the ${action} in your wallet.`, txHash: null });
       const hash = await writeBaseContract(provider, address, BASE_ESCROW_ADDRESS, baseEscrowAbi, method, args);
       setTxHash(hash);
       setProgress({ stage: "submitted", message: "Transaction submitted to Base Sepolia.", txHash: hash });

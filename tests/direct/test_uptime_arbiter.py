@@ -1,0 +1,170 @@
+"""GenLayer Direct Mode lifecycle and adversarial-consensus tests.
+
+Direct Mode executes the contract's actual storage/state machine. The explicit
+equivalence-predicate tests exercise the same pure predicate invoked by every
+validator and prove that well-formed but fabricated leader output is rejected.
+"""
+import datetime
+import json
+
+CONTRACT = "contracts/UptimeArbiter.py"
+TERMS_HASH = "0x" + "ab" * 32
+SOURCES = [
+    "https://status.example/a.json",
+    "https://status.example/b.json",
+    "https://status.example/c.json",
+]
+
+
+def _now(direct_vm):
+    return int(datetime.datetime.fromisoformat(direct_vm._datetime.replace("Z", "+00:00")).timestamp())
+
+
+def _warp(direct_vm, seconds):
+    target = _now(direct_vm) + seconds
+    direct_vm.warp(datetime.datetime.fromtimestamp(target, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z"))
+
+
+def _register(contract, direct_vm, provider, customer, agreement_id=1):
+    current = _now(direct_vm)
+    direct_vm.sender = provider
+    return contract.register_adjudication(
+        agreement_id,
+        int(TERMS_HASH, 16),
+        customer,
+        "Production API",
+        "api.example.com production API",
+        9990,
+        "10000",
+        "1000000",
+        "200000",
+        current - 7200,
+        current + 3600,
+        current + 7200,
+        current + 14400,
+        300,
+        600,
+        SOURCES,
+        "Maintenance announced at least 24 hours before the window is excluded.",
+        12345,
+    )
+
+
+def _activate_and_claim(contract, direct_vm, provider, customer):
+    sla_id = _register(contract, direct_vm, provider, customer)
+    direct_vm.sender = customer
+    contract.record_base_funding(sla_id, "CUSTOMER", 23456)
+    current = _now(direct_vm)
+    claim_id = contract.submit_claim(sla_id, current - 1800, current - 600)
+    return sla_id, claim_id
+
+
+def _report(*, minutes=10, relevant=True, service_match=True, excluded=False, start=1000, end=1600):
+    return {
+        "source_url": "https://status.example/a.json",
+        "source_fingerprint_sha256": "a" * 64,
+        "usable": True,
+        "source_relevant": relevant,
+        "covered_service_match": service_match,
+        "source_summary": "API disruption",
+        "incidents": [{
+            "start_ts": start,
+            "end_ts": end,
+            "service": "api.example.com production API",
+            "summary": "Elevated errors",
+            "quotation": "Investigating elevated API error rates.",
+            "excluded": excluded,
+            "exclusion_reason": "" if not excluded else "scheduled maintenance",
+        }],
+        "breach_minutes": minutes,
+    }
+
+
+def _evaluation(report, minutes=10):
+    reports = []
+    for index in range(3):
+        item = dict(report)
+        item["source_url"] = SOURCES[index]
+        item["incidents"] = [dict(report["incidents"][0])]
+        reports.append(item)
+    return {"reports": reports, "breach_minutes": minutes}
+
+
+def test_unique_base_agreement_binding(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    _register(contract, direct_vm, direct_alice, direct_bob, 7)
+    with direct_vm.expect_revert():
+        _register(contract, direct_vm, direct_alice, direct_bob, 7)
+
+
+def test_future_or_unpublished_claim_window_rejected(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    sla_id = _register(contract, direct_vm, direct_alice, direct_bob)
+    direct_vm.sender = direct_bob
+    contract.record_base_funding(sla_id, "CUSTOMER", 23456)
+    current = _now(direct_vm)
+    with direct_vm.expect_revert():
+        contract.submit_claim(sla_id, current - 60, current + 600)
+    with direct_vm.expect_revert():
+        contract.submit_claim(sla_id, current - 600, current - 100)  # publication lag incomplete
+
+
+def test_completed_claim_evaluates_challenges_and_finalizes(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    _, claim_id = _activate_and_claim(contract, direct_vm, direct_alice, direct_bob)
+    direct_vm.mock_web(r".*status\.example.*", {"status": 200, "body": "Production API incident 10 minutes, 2026-10-15T00:00Z"})
+    direct_vm.mock_llm(r".*independently auditing.*", json.dumps({
+        "usable": True,
+        "source_relevant": True,
+        "covered_service_match": True,
+        "source_summary": "Production API incident",
+        "incidents": [],
+    }))
+    contract.evaluate_claim(claim_id)
+    claim = contract.get_claim(claim_id)
+    assert claim["status"] == "PROVISIONAL_NO_BREACH"
+    assert claim["evidence_digest"].startswith("0x")
+
+    direct_vm.sender = direct_alice
+    contract.file_challenge(claim_id, ["https://status.example/provider-incident.json"], "Provider incident archive adds the timestamped resolution record.")
+    assert contract.get_claim(claim_id)["status"] == "CHALLENGED"
+    contract.resolve_challenge(claim_id)
+    deadline = int(contract.get_claim(claim_id)["challenge_deadline_ts"])
+    _warp(direct_vm, deadline - _now(direct_vm))
+    contract.finalize_claim(claim_id)
+    assert contract.get_claim(claim_id)["status"] == "FINALIZED_NO_BREACH"
+
+
+def test_validator_rejects_fabricated_breach_minutes(direct_vm, direct_deploy):
+    contract = direct_deploy(CONTRACT)
+    honest = _evaluation(_report(minutes=10), 10)
+    fabricated = _evaluation(_report(minutes=10), 900)
+    assert contract.verify_evaluation_equivalence(json.dumps(fabricated), json.dumps(honest)) is False
+
+
+def test_validator_rejects_wrong_service_relevance(direct_vm, direct_deploy):
+    contract = direct_deploy(CONTRACT)
+    honest = _evaluation(_report(minutes=10), 10)
+    unrelated = _evaluation(_report(minutes=10, service_match=False), -1)
+    assert contract.verify_evaluation_equivalence(json.dumps(unrelated), json.dumps(honest)) is False
+
+
+def test_validator_rejects_maintenance_exclusion_disagreement(direct_vm, direct_deploy):
+    contract = direct_deploy(CONTRACT)
+    included = _evaluation(_report(minutes=10, excluded=False), 10)
+    excluded = _evaluation(_report(minutes=10, excluded=True), 10)
+    assert contract.verify_evaluation_equivalence(json.dumps(excluded), json.dumps(included)) is False
+
+
+def test_validator_rejects_different_incident_period(direct_vm, direct_deploy):
+    contract = direct_deploy(CONTRACT)
+    honest = _evaluation(_report(minutes=10, start=1000, end=1600), 10)
+    shifted = _evaluation(_report(minutes=10, start=5000, end=5600), 10)
+    assert contract.verify_evaluation_equivalence(json.dumps(shifted), json.dumps(honest)) is False
+
+
+def test_validator_accepts_bounded_timestamp_and_minute_variance(direct_vm, direct_deploy):
+    contract = direct_deploy(CONTRACT)
+    left = _evaluation(_report(minutes=10, start=1000, end=1600), 10)
+    right = _evaluation(_report(minutes=12, start=1100, end=1700), 12)
+    assert contract.verify_evaluation_equivalence(json.dumps(left), json.dumps(right)) is True

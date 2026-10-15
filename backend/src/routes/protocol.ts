@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../db/client.js";
 import { contract, CONTRACT_ADDRESS } from "../genlayer/client.js";
 import { config } from "../config.js";
-import { upsertSla } from "../indexer/poll.js";
+import { upsertClaim, upsertSla } from "../indexer/poll.js";
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const text = (value: unknown) => value === undefined || value === null ? "" : String(value);
@@ -52,6 +52,31 @@ async function confirmFunding(slaId: string, role: "PROVIDER" | "CUSTOMER", base
   throw new Error("GenLayer did not persist the Base funding receipt yet");
 }
 
+async function confirmClaim(slaId: string, claimant: string, windowStartTs: string, windowEndTs: string) {
+  const normalizedClaimant = claimant.toLowerCase();
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const ids = await contract.listClaimIdsPostWrite(0, 200);
+    for (const claimId of ids) {
+      const claim = await contract.getClaimPostWrite(claimId);
+      if (text(claim.sla_id) === slaId
+        && text(claim.claimant).toLowerCase() === normalizedClaimant
+        && text(claim.window_start_ts) === windowStartTs
+        && text(claim.window_end_ts) === windowEndTs) {
+        await upsertClaim(claimId, claim);
+        return { claimId };
+      }
+    }
+    await pause(1_500);
+  }
+  throw new Error("GenLayer did not persist the matching claim yet");
+}
+
+async function refreshClaim(claimId: string) {
+  const claim = await contract.getClaimPostWrite(claimId);
+  await upsertClaim(claimId, claim);
+  return { status: text(claim.status) };
+}
+
 /**
  * Every route here is a READ against the Postgres index cache (fast,
  * paginated, no StudioNet round-trip) with one exception
@@ -78,7 +103,7 @@ export async function protocolRoutes(app: FastifyInstance) {
       }),
       prisma.slaAgreement.count(),
       prisma.claim.count(),
-      prisma.claim.count({ where: { status: { in: ["RESOLVED_BREACH", "RESOLVED_PARTIAL"] } } }),
+      prisma.claim.count({ where: { status: { in: ["FINALIZED_BREACH", "FINALIZED_PARTIAL"] } } }),
       prisma.challenge.count(),
     ]);
     const held = activeSlas.reduce((total, sla) => {
@@ -187,6 +212,29 @@ export async function protocolRoutes(app: FastifyInstance) {
     ]);
 
     return { rows, total, page, pageSize };
+  });
+
+  app.post("/claims/confirm-submission", async (request, reply) => {
+    const body = request.body as { slaId?: string; claimant?: string; windowStartTs?: string; windowEndTs?: string };
+    if (!body.slaId || !body.claimant || !body.windowStartTs || !body.windowEndTs) {
+      return reply.code(400).send({ error: "slaId, claimant, windowStartTs, and windowEndTs are required" });
+    }
+    try {
+      return await within(confirmClaim(body.slaId, body.claimant, body.windowStartTs, body.windowEndTs), 15_000);
+    } catch (cause) {
+      request.log.warn({ cause, slaId: body.slaId }, "claim confirmation not found yet");
+      return reply.code(409).send({ error: "Claim was submitted but is not yet readable. Do not submit it again; refresh shortly." });
+    }
+  });
+
+  app.post("/claims/:claimId/refresh", async (request, reply) => {
+    const { claimId } = request.params as { claimId: string };
+    try {
+      return await within(refreshClaim(claimId), 15_000);
+    } catch (cause) {
+      request.log.warn({ cause, claimId }, "claim refresh failed");
+      return reply.code(409).send({ error: "Finalized GenLayer claim state is not readable yet; refresh shortly." });
+    }
   });
 
   app.get("/claims/:claimId", async (request, reply) => {

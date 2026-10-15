@@ -53,6 +53,7 @@ model IndexerCursor {
 model SlaAgreement {
   slaId                 String   @id
   baseAgreementId       String   @default("")
+  baseTermsHash         String   @default("")
   provider              String
   customer              String
   label                 String
@@ -79,6 +80,9 @@ model SlaAgreement {
   registrationDeadlineTs BigInt
   termStartTs            BigInt
   termEndTs              BigInt
+  claimDeadlineTs        BigInt   @default(0)
+  settlementDeadlineTs   BigInt   @default(0)
+  publicationLagSeconds  Int      @default(0)
   activeClaimId          String
 
   syncedAt DateTime @updatedAt
@@ -108,6 +112,13 @@ model Claim {
   activeChallengeId     String
   isChallenged          Boolean
   finalized             Boolean
+  evidenceReportJson    String   @default("")
+  evidenceDigest        String   @default("")
+  evaluatedAtTs         BigInt   @default(0)
+  baseClaimOpenedTx     String   @default("")
+  settlementProposedTx  String   @default("")
+  settlementExecutedTx  String   @default("")
+  settlementStatus      String   @default("NOT_READY")
 
   syncedAt DateTime @updatedAt
 

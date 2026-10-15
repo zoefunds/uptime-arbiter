@@ -12,8 +12,8 @@ custodies user USDC. Base Sepolia's escrow contract is the only asset layer.
 | Fly Postgres | `uptime-arbiter-usdc-db` |
 | API | `https://uptime-arbiter-usdc-api.fly.dev` |
 | Runtime process groups | API and indexer, deployed together from the same image |
-| Final GenLayer contract | `0x1798573a1C99b5250881666999d8C3486E5cA4f1` |
-| Base escrow | `0x9656B5a51E94C7bDE57c3370420d617F7Cc2bD98` |
+| Final GenLayer contract | `0x3C81652798479Af674294155e5bf05C5F42D46f7` |
+| Base escrow | `0x72020561a1fF7c95DD13E6Bfa9D3a5fb387072E3` |
 
 `fly.toml` runs two always-on process groups from the same image:
 
@@ -52,10 +52,18 @@ are kept in six-decimal USDC base units as strings. During indexing,
 `readBaseAgreementFunding` reads `BaseUsdcEscrow.agreements(id)` so those
 amounts come from Base Sepolia, never from a GenLayer estimate.
 
-When GenLayer resolves a claim, the relayer submits the result to Base. The
-Base contract independently enforces that customer payout plus provider refund
-equals exactly the USDC held by that agreement; the backend cannot mint or
-overpay funds.
+When GenLayer finalizes a claim, the relay authenticates the Base/GenLayer
+binding: provider, customer, escrow, bond, service end, claim deadline,
+settlement deadline, and terms hash must all match. It derives the distribution
+from the recorded bond and finalized penalty, checks the matching Base claim
+lock, and submits only a delayed proposal. Either party can veto during the
+ten-minute delay. Execution is recorded only when the Base receipt succeeds
+and a read-back reports `Settled`; a mined revert stays unpaid/recoverable.
+
+The indexer treats Base as lifecycle authority. Active, settlement-pending,
+settled, cancelled, and expired states are read from escrow rather than inferred
+from historical GenLayer funding acknowledgments, so a refunded agreement
+cannot remain displayed as active.
 
 ## Local development
 

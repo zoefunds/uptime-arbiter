@@ -14,9 +14,9 @@ interface WriteState {
 
 /**
  * Thin wrapper around a contract write that surfaces the real transaction
- * lifecycle (pending -> submitted -> accepted -> error) to the UI, instead
+ * lifecycle (pending -> submitted -> finalized -> error) to the UI, instead
  * of an optimistic client-side timer. `writeContractMethod` awaits the
- * SDK's own `waitForTransactionReceipt(..., status: "ACCEPTED")`.
+ * returning at consensus acceptance before the transaction is final.
  *
  * A polling timeout (`timedOut: true`) is surfaced as a `warning`, not an
  * `error` — the transaction was already submitted by that point, so giving
@@ -53,11 +53,11 @@ export function useGenlayerWrite() {
           pending: false,
           error: null,
           warning: timedOut
-            ? "Submitted, but we stopped watching for confirmation before it came back — it likely still went through. Refresh in a moment to check, or look up the transaction on the explorer."
+            ? "Submitted, but not yet FINALIZED. No dependent Base action was sent. Do not repeat this transaction; verify it on the explorer or refresh after finalization."
             : null,
           txId,
         });
-        return txId;
+        return timedOut ? null : txId;
       } catch (err) {
         const message = err instanceof Error ? err.message : "Transaction failed";
         setState({ pending: false, error: message, warning: null, txId: null });

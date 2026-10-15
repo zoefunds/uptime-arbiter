@@ -9,15 +9,15 @@ Sepolia escrow actions and the distinct GenLayer StudioNet adjudication action.
 | Value | Production setting |
 | --- | --- |
 | App | [uptime-arbiter.vercel.app](https://uptime-arbiter.vercel.app) |
-| GenLayer contract | `0x1798573a1C99b5250881666999d8C3486E5cA4f1` |
-| Base escrow | `0x9656B5a51E94C7bDE57c3370420d617F7Cc2bD98` |
+| GenLayer contract | `0x3C81652798479Af674294155e5bf05C5F42D46f7` |
+| Base escrow | `0x72020561a1fF7c95DD13E6Bfa9D3a5fb387072E3` |
 | Base USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | API | `https://uptime-arbiter-usdc-api.fly.dev` |
 
 `NEXT_PUBLIC_CONTRACT_ADDRESS` is set in Vercel production. The frontend also
 contains the verified final-contract address as a fallback so an absent public
 environment variable cannot silently revive an old contract. The site footer
-renders the active address; users should verify it shows `0x1798...A4f1` before
+renders the active address; users should verify it shows `0x3C81...46f7` before
 signing a GenLayer transaction.
 
 ## Registration safety sequence
@@ -58,13 +58,22 @@ and Base funding reads. They are not seeded test results and should be treated
 as a live operational view, with Base Sepolia remaining the monetary source of
 truth.
 
+Every GenLayer write exposes submitted, consensus, and finalized progress and
+is considered complete only at `FINALIZED` with a successful execution result.
+Every Base write switches to chain 84532, confirms the selected signer, waits
+for a successful receipt, and reads authoritative contract state. If GenLayer
+claim creation succeeds but the subsequent Base lock is interrupted, the SLA
+page offers a resume action for that existing claim instead of asking for a
+duplicate claim or payment.
+
 ## Pages
 
 - `/registry` and `/registry/[slaId]`: final-contract SLA list/details,
   escrow status, customer co-signing, and claim access.
 - `/register`: provider Base escrow creation followed by linked GenLayer
-  adjudication registration. “Fill Sample Data” uses real public GitHub,
-  OpenAI, and AWS status endpoints with contract-valid terms.
+  adjudication registration. “Fill Sample Data” uses three real GitHub Status
+  API endpoints, internally consistent deadlines, publication/challenge
+  windows, and six-decimal USDC values accepted by both contracts.
 - `/claims` and `/claims/[claimId]`: adjudication/claim status.
 - `/vault`: Base settlement and verdict-relay view.
 - `/verification`: redirects to `/registry`; test cards are deliberately not
