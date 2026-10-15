@@ -129,4 +129,4 @@ Agreement 5 has no open claim and `consumedClaims(keccak256("CLM-1"))` is true. 
 
 ## Source comparison
 
-[Compare the previous accepted milestone (`79f8511`) with the current production branch](https://github.com/zoefunds/uptime-arbiter/compare/79f8511...main). Both references belong to `zoefunds/uptime-arbiter`; using `main` keeps the comparison current after documentation-only follow-up commits.
+[Compare the requested baseline (`9c45aaf364e0e942b7e3beb2fc16afe8dc836cd2`) with the current production branch](https://github.com/zoefunds/uptime-arbiter/compare/9c45aaf364e0e942b7e3beb2fc16afe8dc836cd2...main). The baseline is an ancestor of `main` in `zoefunds/uptime-arbiter`; using `main` keeps the in-repository comparison current after documentation-only follow-up commits. Release submissions should use the immutable full-SHA comparison supplied with the final commit.
