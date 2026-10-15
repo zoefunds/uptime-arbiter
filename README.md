@@ -8,13 +8,20 @@ Uptime Arbiter is a two-chain SLA protocol. GenLayer StudioNet adjudicates publi
 | --- | --- |
 | Web app | [uptime-arbiter.vercel.app](https://uptime-arbiter.vercel.app) |
 | API health | [uptime-arbiter-usdc-api.fly.dev/healthz](https://uptime-arbiter-usdc-api.fly.dev/healthz) |
-| GenLayer v0.9 adjudicator | [`0x73EC2602e25e24FCF642C80642b8541095427Fc4`](https://explorer-studio.genlayer.com/address/0x73EC2602e25e24FCF642C80642b8541095427Fc4) |
-| GenLayer deployment | [`0xd4f8…274d`](https://explorer-studio.genlayer.com/transactions/0xd4f87174bf2691fa8d0fc8fb66586c025fa515b855936f58e7e67e924416274d) |
+| GenLayer v0.9 adjudicator (current redeployment) | [`0xF6939F08B86162aA26849572f95d6D0147E357B4`](https://explorer-studio.genlayer.com/address/0xF6939F08B86162aA26849572f95d6D0147E357B4) |
+| GenLayer deployment | [`0x450c…8e04`](https://explorer-studio.genlayer.com/transactions/0x450c4736f0ea39f5c5d9dc63809c8ed9d5db5a687036a4f13f7014ef2b678e04) |
 | Base Sepolia v0.7 escrow | [`0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A`](https://sepolia.basescan.org/address/0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A) |
 | Base deployment | [`0x88c9…0520`](https://sepolia.basescan.org/tx/0x88c9a70ed2653e9912d7879ef42ef56eacd2825646c642e56416032741310520) |
 | Base Sepolia USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 
 The API health endpoint was checked after deployment and reports healthy Postgres and Redis. Contract-index tables were deliberately cleared and their cursor reset before the new adjudicator was indexed; authentication/session data was not touched.
+
+On 15 October 2026, the GenLayer adjudicator was redeployed from the tested
+current `contracts/UptimeArbiter.py` source after the canonical-incident
+evidence documentation was corrected. The redeployment transaction finalized
+with five agreeing validators. The Base v0.7 escrow is unchanged because no
+Solidity source or ABI changed; Vercel and Fly now point at the replacement
+GenLayer address above.
 
 ## Historical live settlement evidence
 

@@ -9,7 +9,7 @@ Sepolia escrow actions and the distinct GenLayer StudioNet adjudication action.
 | Value | Production setting |
 | --- | --- |
 | App | [uptime-arbiter.vercel.app](https://uptime-arbiter.vercel.app) |
-| GenLayer v0.9 contract | `0x73EC2602e25e24FCF642C80642b8541095427Fc4` |
+| GenLayer v0.9 contract | `0xF6939F08B86162aA26849572f95d6D0147E357B4` |
 | Base v0.7 escrow | `0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A` |
 | Base USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | API | `https://uptime-arbiter-usdc-api.fly.dev` |

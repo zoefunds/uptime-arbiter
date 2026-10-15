@@ -8,11 +8,25 @@ This milestone completes the split required by the protocol: **GenLayer adjudica
 
 | Layer | Address | Deployment transaction |
 | --- | --- | --- |
-| GenLayer StudioNet v0.9 adjudicator | [`0x73EC2602e25e24FCF642C80642b8541095427Fc4`](https://explorer-studio.genlayer.com/address/0x73EC2602e25e24FCF642C80642b8541095427Fc4) | [`0xd4f87174bf2691fa8d0fc8fb66586c025fa515b855936f58e7e67e924416274d`](https://explorer-studio.genlayer.com/transactions/0xd4f87174bf2691fa8d0fc8fb66586c025fa515b855936f58e7e67e924416274d) |
+| GenLayer StudioNet v0.9 adjudicator (current redeployment) | [`0xF6939F08B86162aA26849572f95d6D0147E357B4`](https://explorer-studio.genlayer.com/address/0xF6939F08B86162aA26849572f95d6D0147E357B4) | [`0x450c4736f0ea39f5c5d9dc63809c8ed9d5db5a687036a4f13f7014ef2b678e04`](https://explorer-studio.genlayer.com/transactions/0x450c4736f0ea39f5c5d9dc63809c8ed9d5db5a687036a4f13f7014ef2b678e04) |
 | Base Sepolia v0.7 escrow | [`0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A`](https://sepolia.basescan.org/address/0x8025E0Edd8BF6D27322A07699EB237F7248Dea6A) | [`0x88c9a70ed2653e9912d7879ef42ef56eacd2825646c642e56416032741310520`](https://sepolia.basescan.org/tx/0x88c9a70ed2653e9912d7879ef42ef56eacd2825646c642e56416032741310520) |
 | Base Sepolia USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) | Circle test token |
 
 The v0.9 deployment finalized with majority validator agreement. Fly (`uptime-arbiter-usdc-api`) and Vercel production use the v0.9/v0.7 pair. `/healthz` was checked after migration and reported `database: true` and `redis: true`.
+
+### 15 October 2026 canonical-source redeployment
+
+The GenLayer adjudicator was redeployed from the currently tested source after
+the canonical GitHub incident-parser documentation was corrected. Deployment
+[`0x450c…8e04`](https://explorer-studio.genlayer.com/transactions/0x450c4736f0ea39f5c5d9dc63809c8ed9d5db5a687036a4f13f7014ef2b678e04)
+finalized with five validator `AGREE` votes at
+[`0xF693…57B4`](https://explorer-studio.genlayer.com/address/0xF6939F08B86162aA26849572f95d6D0147E357B4).
+Before the switch, the full contract suite passed: 14 Direct Mode tests and 8
+Foundry escrow tests. The backend/frontend builds also passed. Base escrow was
+not redeployed because its Solidity source and ABI did not change. Production's
+non-authoritative index mirror was inspected after the switch: it has zero SLA,
+claim, and challenge rows and its sole cursor is already `0/0`; no destructive
+database action was performed.
 
 ## Reviewer findings closed
 
