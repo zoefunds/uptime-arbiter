@@ -2,6 +2,8 @@
 
 Uptime Arbiter is a two-chain SLA protocol. GenLayer StudioNet adjudicates public uptime evidence; Base Sepolia is the sole USDC custody and settlement layer. Neither an LLM output, an API row, nor a relayer instruction can transfer escrowed funds directly.
 
+Documentation status: **15 October 2026, after the canonical v0.10/v0.8 deployment and funded dispute exercise.** Component-specific operating notes are in [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md); the complete review remediation and transaction record is in [milestone.md](milestone.md).
+
 ## Production deployment — 15 October 2026
 
 | Component | Live value |
@@ -15,7 +17,7 @@ Uptime Arbiter is a two-chain SLA protocol. GenLayer StudioNet adjudicates publi
 | Base Sepolia USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 | Public deployment manifest | [`/api/deployment`](https://uptime-arbiter.vercel.app/api/deployment) |
 
-The API health endpoint was checked after deployment and reports healthy Postgres and Redis. The contract mirror was inspected after the address switch and contained zero SLAs, claims, and challenges with cursor `0/0`; no destructive delete was needed and authentication/session data was untouched.
+The API health endpoint was rechecked on 15 October 2026 and reports healthy Postgres and Redis. Immediately after the address switch, the new contract mirror contained zero SLAs, claims, and challenges with cursor `0/0`; no destructive delete was needed and authentication/session data was untouched. It now mirrors the funded canonical demonstration: one SLA (`SLA-1`) and one claim (`CLM-1`).
 
 On 15 October 2026, both contracts were redeployed from the tested v0.10/v0.8
 sources. The GenLayer deployment finalized with validator consensus. The Base
@@ -38,15 +40,17 @@ successful Base receipt, and reread escrow state before marking it executed.
 
 ## Current-version funded evidence
 
-The canonical v0.10/v0.8 pair now has a funded 0.120000-USDC cross-chain
-agreement visible as `SLA-1` in the production registry. Its completed-window
-claim reached finalized GenLayer consensus. A deliberately unsupported relay
+The canonical v0.10/v0.8 pair now has Base agreement `2`, a funded 0.120000-USDC cross-chain
+agreement visible as `SLA-1` in the production registry. The provider escrow is 0.100000 USDC and the customer bond is 0.020000 USDC. Its completed-window
+claim `CLM-1` reached finalized GenLayer consensus as `FINALIZED_INCONCLUSIVE`, with evidence digest `0x164cf574ad8c35de5533bb943bee09b16b12f7ec099b3e3b22204d4f830dd89b`: only the official GitHub source matched the covered GitHub Actions service, so the required multi-source service agreement was not fabricated. A deliberately unsupported relay
 allocation was then [proposed](https://sepolia.basescan.org/tx/0x334a9dadb2bf5832e5e13ff3c1207caa838b1590464d5c03d6cc9e23da8ccec9)
 and [vetoed by the customer](https://sepolia.basescan.org/tx/0x621ddc551b535a3b83df9afe16740515894401dbfc116457dae241ffb7443ad5).
 No USDC moved. The verifier rejection is intentionally unavailable until the
 contract's real 24-hour review delay ends on 16 October 2026 at 21:05:34 WAT;
 the pending step and every preceding receipt are documented in
 [milestone.md](milestone.md).
+
+As of the documentation check, the public API reports `SLA-1` as `DISPUTED`, both deposits as funded, and `CLM-1` as `FINALIZED_INCONCLUSIVE`. These are indexed views; the Base escrow remains the authority for the 120,000 six-decimal USDC units still held.
 
 ## Security and lifecycle
 

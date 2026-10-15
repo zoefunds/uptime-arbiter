@@ -16,7 +16,8 @@ Sepolia escrow actions and the distinct GenLayer StudioNet adjudication action.
 | Deployment manifest | `https://uptime-arbiter.vercel.app/api/deployment` |
 
 The production configuration uses the v0.10/v0.8 deployment. The registry is backed only by the active contract's
-indexer mirror; that mirror was cleared and its cursor reset during migration.
+indexer mirror. The new deployment began with an empty mirror and reset cursor;
+it now contains the funded canonical `SLA-1` and `CLM-1` records.
 Base writes explicitly switch to Base Sepolia, confirm the selected account,
 and rely on the wallet/RPC's gas estimate instead of imposing a fixed
 client-side gas limit.
@@ -73,11 +74,14 @@ and Base funding reads. They are not seeded test results and should be treated
 as a live operational view, with Base Sepolia remaining the monetary source of
 truth.
 
-On 15 October 2026 the production registry was browser-checked after deployment:
-it rendered the funded current-version `SLA-1`, provider/customer addresses,
-0.100000-USDC provider escrow, `ACTIVE` state, and footer links to GenLayer
-`0x700D…1D81` and Base `0x9d8A…0d6d`. A cache-resistant JSON copy of the same
-canonical deployment is available at `/api/deployment`.
+On 15 October 2026 the production registry was browser-checked after deployment
+and rendered the funded current-version `SLA-1`, provider/customer addresses,
+0.100000-USDC provider escrow, and footer links to GenLayer `0x700D…1D81` and
+Base `0x9d8A…0d6d`. That initial `ACTIVE` observation preceded the deliberate
+unsupported settlement proposal and customer veto. The current API lifecycle
+value is `DISPUTED`, so an `ACTIVE` screenshot is historical evidence rather
+than current state. A cache-resistant JSON copy of the canonical deployment is
+available at `/api/deployment`.
 
 Lifecycle labels are derived from authoritative Base state rather than old
 GenLayer funding acknowledgments. Settled, expired, and cancelled agreements
@@ -99,8 +103,8 @@ duplicate claim or payment.
 - `/registry` and `/registry/[slaId]`: final-contract SLA list/details,
   escrow status, customer co-signing, and claim access.
 - `/register`: provider Base escrow creation followed by linked GenLayer
-  adjudication registration. “Fill Sample Data” uses three real GitHub Status
-  API endpoints, internally consistent deadlines, publication/challenge
+  adjudication registration. “Fill Sample Data” uses three real public status
+  sources (GitHub, OpenAI, and AWS), internally consistent deadlines, publication/challenge
   windows, and six-decimal USDC values accepted by both contracts.
 - `/claims` and `/claims/[claimId]`: adjudication/claim status.
 - `/vault`: Base settlement and verdict-relay view.

@@ -12,7 +12,7 @@ This milestone completes the split required by the protocol: **GenLayer adjudica
 | Base Sepolia v0.8 escrow | [`0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d`](https://sepolia.basescan.org/address/0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d) | [`0x7b67ccfce0b7606d523a3ecf1e5d30350554a623bbacd188543c2f4c836b4eb2`](https://sepolia.basescan.org/tx/0x7b67ccfce0b7606d523a3ecf1e5d30350554a623bbacd188543c2f4c836b4eb2) |
 | Base Sepolia USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) | Circle test token |
 
-The v0.10 GenLayer deployment finalized with majority validator agreement. The v0.8 Base deployment has nonempty runtime bytecode and its on-chain owner, relayer, resolver, and verifier reads match the four distinct operational addresses documented below. Fly and Vercel were redeployed against this pair. The live `/healthz` response returned `database: true` and `redis: true`; the production contract mirror was verified as zero SLA, zero claim, zero challenge, cursor `0/0`, so no destructive database deletion was necessary.
+The v0.10 GenLayer deployment finalized with majority validator agreement. The v0.8 Base deployment has nonempty runtime bytecode and its on-chain owner, relayer, resolver, and verifier reads match the four distinct operational addresses documented below. Fly and Vercel were redeployed against this pair. The live `/healthz` response returned `database: true` and `redis: true`. Immediately after migration, the production contract mirror was verified as zero SLA, zero claim, zero challenge, cursor `0/0`, so no destructive database deletion was necessary. After the funded demonstration below, the same live mirror reports one SLA and one claim; the SLA is now `DISPUTED` and the claim `FINALIZED_INCONCLUSIVE`.
 
 ### 15 October 2026 authenticated-dispute redeployment
 
@@ -57,8 +57,11 @@ contracts, not seeded UI data. The provider deposited 0.100000 USDC and the
 customer accepted with a 0.020000-USDC bond. GenLayer `SLA-1` commits the exact
 Base agreement ID and `termsHash`
 `0xbf4353a137bc27f766e66d30cdf340a49b4c7a90cc7904c4b5475497e48bb18d`.
-The production indexer mirrored it and the public registry rendered it as an
-active SLA with both current explorer-linked contract addresses.
+The production indexer mirrored it and the public registry first rendered it as
+an active SLA with both current explorer-linked contract addresses. Following
+the later veto exercise, the current authoritative lifecycle is `Disputed` and
+the API reports `DISPUTED`; the earlier active rendering is timestamped
+historical UI evidence, not the present state.
 
 | Step | Public transaction |
 | --- | --- |
@@ -104,7 +107,7 @@ This is retained as public negative-path evidence.
 
 The prior v0.8/v0.5 pair completed the funded trace below. It is retained as historical execution evidence only; its database mirror was cleared during the later contract migrations. No user sessions or authentication records were deleted.
 
-A real, small USDC agreement validated the historical v0.8/v0.5 deployment rather than seeded UI data. v0.9 supersedes its coarse Statuspage timestamps with canonical-host validation, incident-update impairment intervals, and deterministic maintenance exclusions.
+A real, small USDC agreement validated the historical v0.8/v0.5 deployment rather than seeded UI data. The current v0.10 adjudicator supersedes its coarse Statuspage timestamps with canonical-host validation, incident-update impairment intervals, and deterministic maintenance exclusions.
 
 | Step | Public reference |
 | --- | --- |
@@ -124,7 +127,7 @@ The claim covers the completed 12 October 2026 GitHub Actions incident window. T
 
 ## Verification evidence
 
-Executed locally after the v0.8 change:
+Executed locally on 15 October 2026 against the current v0.10 GenLayer and v0.8 Base sources:
 
 ```text
 pytest -q tests/direct/test_uptime_arbiter.py  -> 14 passed

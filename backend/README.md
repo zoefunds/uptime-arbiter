@@ -15,7 +15,9 @@ custodies user USDC. Base Sepolia's escrow contract is the only asset layer.
 | GenLayer v0.10 contract | `0x700D935A78562Dd5FBdfA603bbb5E00C9f521D81` |
 | Base v0.8 escrow | `0x9d8A7e19336725E261d2e11aB4171F1748aB0d6d` |
 
-Production is configured for the v0.10/v0.8 pair. Contract-index rows are cleared before an address switch; the indexer begins at offset zero for the new contract, while auth/session data remains intact.
+Production is configured for the v0.10/v0.8 pair. Immediately after this address switch, the new deployment had no contract-local rows, so no destructive table operation was required; the indexer began at offset zero while auth/session data remained intact. As of 15 October 2026, the live mirror contains one funded SLA and one finalized-inconclusive claim. Base agreement `2` is authoritatively `Disputed` after the customer vetoed an unsupported allocation; all 0.120000 USDC remains in escrow pending verifier action.
+
+The current operational roles are deliberately distinct: owner `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb`, relayer `0xEeE61293E25b5D4E9034DCEEB57AC89ff931B642`, dispute resolver `0x187F4B4128244De438db8a732c871Ff88779D9F9`, and ruling verifier `0x994541A7CD9244FBD997Ba9774DbcEef226c5998`. Private keys for these roles belong only in Fly secrets, never source control or public frontend variables.
 
 The prior v0.8/v0.5 production indexer completed a challenged-breach relay on 2026-10-15. It
 recorded `FINALIZED_BREACH` with a one-challenge history, submitted
@@ -108,9 +110,12 @@ npm run indexer   # separate terminal
 ```
 
 Required environment values are documented in `.env.example`. In addition to
-Postgres and Redis, use the final GenLayer contract address, a Base Sepolia RPC
-URL, the Base escrow address, and the relayer key only in backend secrets.
-Never expose the relayer key through the frontend.
+Postgres and Redis, production requires the canonical GenLayer contract, a Base
+Sepolia RPC URL, the canonical Base escrow, and separately held relayer,
+resolver, and verifier keys. `BASE_RELAYER_PRIVATE_KEY`,
+`BASE_DISPUTE_RESOLVER_PRIVATE_KEY`, and `BASE_RULING_VERIFIER_PRIVATE_KEY`
+must identify different authorized accounts and exist only in backend secrets.
+Never expose any operational private key through the frontend.
 
 ## Deploying
 
@@ -122,9 +127,11 @@ fly deploy
 ```
 
 The Fly release command runs `prisma migrate deploy`. Contract migrations are
-not routine configuration changes: if `NEXT_PUBLIC_CONTRACT_ADDRESS` is changed,
-the cache must be cleared first because contract-local IDs such as `SLA-1` can
-overlap an earlier deployment.
+not routine configuration changes. Before indexing a different
+`NEXT_PUBLIC_CONTRACT_ADDRESS`, archive any needed evidence and clear only the
+three contract-derived tables because contract-local IDs such as `SLA-1` can
+overlap an earlier deployment. Authentication and session tables are outside
+this cleanup scope.
 
 ```bash
 fly secrets set NEXT_PUBLIC_CONTRACT_ADDRESS="<new GenLayer address>" -a uptime-arbiter-usdc-api
